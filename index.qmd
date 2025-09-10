@@ -1,0 +1,50 @@
+---
+title: "Tiffany.com"
+---
+![](ME.jpeg)
+
+## About Me
+
+Hi! I'm Tiffany (in the **middle** with my bffs since high school). It's my first semester at Baruch College as a MS Statistics grad student, so I'm excited to meet everyone. I went to Binghamton University for my undergrad, but I am a Brooklyn native. I am a matcha enthusiast, novice reader (CURRENTLY READING: A Little Life by Hanya Yanagihara), and a shopaholic. 
+
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+
+if(!require("leaflet")){
+    options(repos=c(CRAN="https://cloud.r-project.org"))
+    install.packages("leaflet")
+    stopifnot(require("leaflet"))
+}
+
+ny_longitude <- -74.0060
+ny_latitude <- +40.7128
+
+baruch_longitude <- -73.9841
+baruch_latitude  <- +40.7402
+
+bing_longitude <- -75.9695
+bing_latitude <- +42.0894
+
+leaflet() |>
+  addTiles() |>
+  setView(ny_longitude, ny_latitude, zoom=6) |>
+  addPopups(baruch_longitude, baruch_latitude, 
+            "<b>Baruch College</b>") |>
+  addPopups(bing_longitude, bing_latitude, 
+            "<b>Binghamton University</b>")
+```
+
+```{r}
+#| include: false
+1+1
+```
+## Let's Connect!
+* [LinkedIn](https://www.linkedin.com/in/tiffany-ng-02bab3254/)
+* [GitHub](https://github.com/tiffany-ngli)
+
+--------------
+Last Updated: `r format(Sys.time(), "%A %m %d, %Y at %H:%M%p")`
+
+
