@@ -36,14 +36,17 @@ leaflet() |>
             "<b>Binghamton University</b>")
 ```
 
-```{r}
-#| include: false
-1+1
-```
+## Career Goals
+As a native New Yorker, I see and experience the socioeconomic issues relevant in our day to day lives. Hence why I take particular interest in analyzing NYC data to better understand the state of matter. I'm also a strong advocate for data inclusivity as it is essential to paint a clear picture that represents the population. I am open to exploring all intersects of data analytics, whether it be in finance, healthcare, tech, and supply chain operations. 
+
 ## Let's Connect!
 * [LinkedIn](https://www.linkedin.com/in/tiffany-ng-02bab3254/)
 * [GitHub](https://github.com/tiffany-ngli)
 
+```{r}
+#| include: false
+1+1
+```
 --------------
 Last Updated: `r format(Sys.time(), "%A %m %d, %Y at %H:%M%p")`
 
