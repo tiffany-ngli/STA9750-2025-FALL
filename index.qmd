@@ -37,7 +37,7 @@ leaflet() |>
 ```
 
 ## Career Goals
-As a native New Yorker, I witness the city’s socioeconomic challenges firsthand, which fuels my passion for analyzing NYC data to better understand the realities we face. I'm also a strong advocate for data inclusivity as it is essential for accurately representing diverse communities and uncovering overlooked insights.. I am open to exploring all intersects of data analytics, whether it be in finance, healthcare, tech, and supply chain operations. 
+As a native New Yorker, I witness the city’s socioeconomic challenges firsthand, which fuels my passion for analyzing NYC data to better understand the realities we face. I'm also a strong advocate for data inclusivity as it is essential for accurately representing diverse communities and uncovering overlooked insights. I am open to exploring all intersects of data analytics, whether it be in finance, healthcare, tech, and supply chain operations. 
 
 ## Let's Connect!
 * [LinkedIn](https://www.linkedin.com/in/tiffany-ng-02bab3254/)
