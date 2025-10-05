@@ -1,0 +1,560 @@
+---
+title: "Mini-Project #01"
+---
+
+# TASK 1: DATA ACQUISITION
+Loading in Global Top 10 from Netflix's TuDum Top 10. 
+```{r, echo=TRUE, results='hide', message=FALSE}
+#| code-fold: true
+#| code-summary: "Show the code"
+
+if(!dir.exists(file.path("data", "mp01"))){
+    dir.create(file.path("data", "mp01"), showWarnings=FALSE, recursive=TRUE)
+}
+
+GLOBAL_TOP_10_FILENAME <- file.path("data", "mp01", "global_top10_alltime.csv")
+
+if(!file.exists(GLOBAL_TOP_10_FILENAME)){
+    download.file("https://www.netflix.com/tudum/top10/data/all-weeks-global.tsv", 
+                  destfile=GLOBAL_TOP_10_FILENAME)
+}
+
+COUNTRY_TOP_10_FILENAME <- file.path("data", "mp01", "country_top10_alltime.csv")
+
+if(!file.exists(COUNTRY_TOP_10_FILENAME)){
+    download.file("https://www.netflix.com/tudum/top10/data/all-weeks-countries.tsv", 
+                  destfile=COUNTRY_TOP_10_FILENAME)
+}
+
+if(!require("tidyverse")) install.packages("tidyverse")
+library(readr)
+library(dplyr)
+
+GLOBAL_TOP_10 <- read_tsv(GLOBAL_TOP_10_FILENAME)
+str(GLOBAL_TOP_10)
+glimpse(GLOBAL_TOP_10)
+```
+
+# TASK 2: DATA CLEANING 
+Global Top 10 has season titles with "N/A" values, which should be changed to NA instead.
+```{r, echo=TRUE, results='hide', message=FALSE}
+#| code-fold: true
+#| code-summary: "Show the code"
+
+# finds season_title with "N/A" values, changes it to NA, otherwise keep season_title
+GLOBAL_TOP_10 <- GLOBAL_TOP_10 |>
+    mutate(season_title = if_else(season_title =="N/A", NA, season_title))
+glimpse(GLOBAL_TOP_10)
+```
+
+# TASK 3: DATA IMPORT
+Loading in Country-wide Top 10 from Netflix's TuDum Top 10.
+```{r, echo=TRUE, results='hide', message=FALSE}
+#| code-fold: true
+#| code-summary: "Show the code"
+COUNTRY_TOP_10 <- read_tsv(COUNTRY_TOP_10_FILENAME, na = c("N/A"))
+str(COUNTRY_TOP_10)
+glimpse(COUNTRY_TOP_10)
+```
+
+# EXPLORATORY DATA ANALYISIS 
+Reformating data tables to be more presentable and easier to follow. 
+```{r, echo=TRUE, results='hide', message=FALSE}
+#| code-fold: true
+#| code-summary: "Show the code"
+library(DT)
+GLOBAL_TOP_10 |> 
+    head(n=20) |>
+    datatable(options=list(searching=FALSE, info=FALSE))
+
+# Creates the function format_titles with attribute of dataframe
+library(stringr)
+format_titles <- function(df){
+    colnames(df) <- str_replace_all(colnames(df), "_", " ") |> str_to_title()
+    df
+}
+
+GLOBAL_TOP_10 |> 
+    format_titles() |> # Here's an example of using format_titles function
+    head(n=20) |>
+    datatable(options=list(searching=FALSE, info=FALSE)) |>
+    formatRound(c('Weekly Hours Viewed', 'Weekly Views'))
+
+GLOBAL_TOP_10 |> 
+    select(-season_title) |>
+    format_titles() |>
+    head(n=20) |>
+    datatable(options=list(searching=FALSE, info=FALSE)) |>
+    formatRound(c('Weekly Hours Viewed', 'Weekly Views'))
+    
+GLOBAL_TOP_10 |> 
+    mutate(`runtime_(minutes)` = round(60 * runtime)) |>
+    select(-season_title, 
+           -runtime) |>
+    format_titles() |>
+    head(n=20) |>
+    datatable(options=list(searching=FALSE, info=FALSE)) |>
+    formatRound(c('Weekly Hours Viewed', 'Weekly Views'))
+```
+
+# TASK 4: EXPLORATORY QUESTIONS
+### 🌎 Netflix is available in 94 countries
+```{r, echo=TRUE, results='hide', message=FALSE}
+#| code-fold: true
+#| code-summary: "Show the code"
+# 1. How many different countries does Netflix operate in? 
+# (You can use the viewing history as a proxy for countries in which Netflix operates.)
+length(unique(COUNTRY_TOP_10$country_name))
+
+COUNTRY_TOP_10 |>
+  distinct(country_name) |>
+  format_titles() |>
+  datatable(options=list(searching=FALSE, info=FALSE))
+
+```
+
+# 🏆 Highest Cumulative Weeks in the Global Top 10 
+#### *All Quiet on the Western Front* at 23 cumulative weeks with a runtime of **148** minutes.
+![](https://m.media-amazon.com/images/M/MV5BOWJiYWMyYTktZThhOS00ZjgxLWE0YTQtZDMyNTQxMjMyYjI2XkEyXkFqcGc@._V1_.jpg)
+```{r, echo=TRUE, results='hide', message=FALSE}
+#| code-fold: true
+#| code-summary: "Show the code"
+
+# 2. Which non-English-language film has spent the most cumulative weeks in the global top 10? How many long is it in minutes?
+GLOBAL_TOP_10 |>
+  select(category, show_title, cumulative_weeks_in_top_10, runtime) |>
+  filter(category %in%"Films (Non-English)") |>
+  slice_max(cumulative_weeks_in_top_10, n=1) |>
+  mutate(runtime = 148) |>
+  format_titles() |>
+  datatable(options=list(searching=FALSE, info=FALSE))
+```
+
+# 🏆 Longest Film to Appear in the Top 10
+#### *Pushpa: The Rule (Reloaded Version)* with a runtime of **224** minutes
+![](https://m.media-amazon.com/images/M/MV5BNDM3N2UzM2UtMjEwMC00NGUzLThmMmQtNGMyM2VmMDA0ZWEwXkEyXkFqcGc@._V1_FMjpg_UX1000_.jpg)
+```{r, echo=TRUE, results='hide', message=FALSE}
+#| code-fold: true
+#| code-summary: "Show the code"
+# 3 What is the longest film (English or non-English) to have ever appeared in the Netflix global Top 10? How long is it in minutes?
+ 
+GLOBAL_TOP_10 |>
+  select(category, show_title, runtime) |>
+  mutate(`runtime` = round(60 * runtime)) |>
+  filter(category == c("Films (English)","Films (Non-English)")) |>
+  slice_max(runtime, n=1) |>
+  format_titles() |>
+  datatable(options=list(searching=FALSE, info=FALSE))
+  
+```
+
+# 🏆 Most Total Hours of Global Viewership by Category 
+| Category | Show Title | Total Hours Viewership |
+| ------- | ------ | ------- |
+| Films (English) |	KPop Demon Hunters | 523,700,000 |
+| Films (Non-English)	| Society of the Snow	| 235,900,000 |
+| TV (English) | Stranger Things | 2,967,980,000 |
+| TV (Non-English) | Squid Game	| 5,048,300,000 |
+```{r, echo=TRUE, results='hide', message=FALSE}
+#| code-fold: true
+#| code-summary: "Show the code"
+# 4. For each of the four categories, what program has the most total hours of global viewership?
+
+GLOBAL_TOP_10 |>
+  group_by(category, show_title) |>
+  summarize(total_hours_viewership = sum(weekly_hours_viewed)) |>
+  slice_max(total_hours_viewership, n=1) |>
+  format_titles() |>
+  datatable(options=list(searching=FALSE, info=FALSE))
+  
+```
+
+# 🏆 TV Show with the Longest Top 10 Run 
+#### *Money Heist: Part 1* had a **127** cumulative week run in the Top 10s in **Pakistan**.
+![](https://i0.wp.com/thsindex.org/wp-content/uploads/2023/04/Money-Heist-was-first-released-on-Antena-3-in-Spain-in-2017-Netflix.jpg?fit=1920%2C2560&ssl=1)
+```{r, echo=TRUE, results='hide', message=FALSE}
+#| code-fold: true
+#| code-summary: "Show the code"
+# 5. Which TV show had the longest run in a country's Top 10? How long was this run and in what country did it occur? 
+
+COUNTRY_TOP_10 |>
+  filter(category %in% "TV") |>
+  slice_max(cumulative_weeks_in_top_10, n=1)
+  
+```
+# Netflix has provided over 200 weeks of service for 93 countries but...
+#### *Russia* who's service ended in 2022-02-27.
+```{r}
+#| code-fold: true
+#| code-summary: "Show the code"
+# 6. Netflix provides over 200 weeks of service history for all but one country in our data set. Which country is this and when did Netflix cease operations in that country?
+
+COUNTRY_TOP_10 |>
+  group_by(country_name, week) |>
+  summarize() |>
+  mutate(first_week = first(week)) |>
+  mutate(last_week = last(week)) |>
+  distinct(country_name, .keep_all = TRUE) |>
+  mutate(service_history_days = round(last_week - first_week)) |>
+  mutate(service_history_weeks = as.numeric(round((service_history_days)/7))) |>
+  arrange(service_history_weeks) |>
+  format_titles() |>
+  datatable(options=list(searching=FALSE, info=FALSE))
+```
+
+# 🦑🎮 Total Viewership of Squid Game
+#### The *Squid Game* series totaled **5,310,000,000** over the years.
+![](https://m.media-amazon.com/images/M/MV5BYTU3ZDVhNmMtMDVlNC00MDc0LTgwNDMtYWE5MTI2ZGI4YWIwXkEyXkFqcGc@._V1_FMjpg_UX1000_.jpg)
+```{r, echo=TRUE, results='hide', message=FALSE}
+#| code-fold: true
+#| code-summary: "Show the code"
+# 7. What is the total viewership of the TV show Squid Game? Note that there are three seasons total and we are looking for the total number of hours watched across all seasons. 
+
+GLOBAL_TOP_10 |> 
+  filter(show_title %in% c("Squid Game", "Squid Game: The Challenge")) |>
+  summarise(total_viewership = sum(weekly_hours_viewed)) |>
+  format_titles() |>
+  datatable(options=list(searching=FALSE, info=FALSE))
+```
+
+# 🎬 Red Notice views in 2021
+#### *Red Notice* had **201,732,203** views in its first year of release. 
+![](https://m.media-amazon.com/images/M/MV5BOGNjNGQ3MmItYTM5NS00NjBiLWI0ZTItZDE5ZjQyNjg3ODBjXkEyXkFqcGc@._V1_FMjpg_UX1000_.jpg)
+```{r, echo=TRUE, results='hide', message=FALSE}
+#| code-fold: true
+#| code-summary: "Show the code"
+# 8. The movie Red Notice has a runtime of 1 hour and 58 minutes. Approximately how many views did it receive in 2021?
+
+GLOBAL_TOP_10 |> 
+  filter(show_title %in% "Red Notice") |>
+  mutate(runtime = 1+(58/60)) |>
+  filter(week >= "2021-01-01" & week <= "2021-12-31") |>
+  mutate(weekly_views = weekly_hours_viewed/runtime) |>
+  summarize(sum(weekly_views)) |>
+  format_titles() |>
+  datatable(options=list(searching=FALSE, info=FALSE))
+  
+```
+
+# 📈 US #1 Films That Didn’t Debut at the Top
+
+```{r, message=FALSE}
+#| code-fold: true
+#| code-summary: "Show the code"
+# 9. How many Films reached Number 1 in the US but did not originally debut there? 
+# That is, find films that first appeared on the Top 10 chart at, e.g., Number 4 but 
+# then become more popular and eventually hit Number 1 What is the most recent film to pull this off?
+
+COUNTRY_TOP_10 |>
+  filter(country_name %in% "United States") |>
+  filter(category %in% "Films") |>
+  group_by(show_title, week) |>
+  summarize(weekly_rank) |>
+  group_by(show_title) |>
+  mutate(debut_rank = first(weekly_rank)) |>
+  mutate(growth = if_else(debut_rank > weekly_rank & weekly_rank == 1, TRUE, FALSE)) |>
+  filter(growth == TRUE) |>  
+  distinct(show_title, .keep_all = TRUE) |>
+  format_titles() |>
+  datatable(options=list(searching=FALSE, info=FALSE))
+```
+
+# 🌎 TV Show/Season With the Most Top 10 Debuts Globally
+#### *Emily in Paris* debuted in the Top 10s in **94** countries.
+
+```{r}
+#| code-fold: true
+#| code-summary: "Show the code"
+# 10. Which TV show/season hit the top 10 in the most countries in its debut week? In how many countries did it chart? 
+
+COUNTRY_TOP_10 |>
+  filter(category %in% "TV") |>
+  group_by(show_title) |>
+  arrange(week) |>
+  mutate(debut_week = first(week)) |> 
+  filter(week == debut_week) |>
+  distinct(country_name) |>
+  count(show_title) |>
+  arrange(desc(n)) |>
+  format_titles() |>
+  datatable(options=list(searching=FALSE, info=FALSE), colnames = c("Show Title", "Number of Countries"))
+
+```
+
+
+# TASK 5: STRANGER THINGS PRESS RELEASE 
+
+# Darker. Scarier. Stranger Things Returns. 
+
+*Stranger Things Season 5*  is set to premier later this year, concluding the series with the long anticipated showdown with Vecna. Will the team defeat Vecna once and for all? If so, at what cost? Tune in **November 26, 2025** for Volume I's release to find out. 
+
+[![Click image for trailer](https://dnm.nflximg.net/api/v6/BvVbc2Wxr2w6QuoANoSpJKEIWjQ/AAAAQUq_sj3y88nqrcBnRm69rS7xur65HYgLkCS5MxHbA-7Dvd72b3Mek4eoiDb5Rb4-dzpaJz260toRGHQIeKdtAvUxWmmk5hio-pquv_pTESDyz5XQuv6K0vlqFQvsPXGuMA0OfA7q27_8cBy9ds-8RroPX1Y.jpg?r=9d3)](https://www.youtube.com/watch?v=iKZyYdwS3Wg)
+<br></br>
+
+### Dominating the Charts
+Following its release, it is expected to elevate the series’ global viewership to record-breaking levels of **3+ billion** total views, reinforcing its standing as one of Netflix’s most successful franchises. Driving a bigger gap between its top competitor in TV, *Wednesday*. Once again, securing the **#1** spot. As both series hit the Top 10s in **93 countries** on their debut week.
+```{r}
+#| code-fold: true
+#| code-summary: "Show the code"
+# multinational appeal of previous seasons
+# Stranger Things VS other popular English-language TV shows 
+
+GLOBAL_TOP_10 |>
+  filter(category %in% "TV (English)") |>
+  group_by(show_title) |>
+  summarize(total_views = sum(weekly_hours_viewed)) |>
+  arrange(desc(total_views)) |>
+  format_titles() |>
+  datatable(options=list(searching=FALSE, info=FALSE))
+```
+<br></br>
+Currently at **#2** in Netflix’s global Top 10s, *Stranger Things* is set to top the charts with Volume I in November and Volume II in December. Previous seasons have recently reappeared in the Top 10s, showing that both new fans and longtime viewers can’t get enough of the Upside Down. 
+```{r}
+#| code-fold: true
+#| code-summary: "Show the code"
+GLOBAL_TOP_10 |>
+  filter(category %in% "TV (English)") |>
+  group_by(show_title) |>
+  count(show_title)  |>
+  arrange(desc(n)) |>
+  format_titles() |>
+  datatable(options=list(searching=FALSE, info=FALSE), colnames = c("Show Title", "Weeks in Top 10"))
+```
+<br></br>
+
+### Throughout the Years
+*Stranger Things* has proven itself to be timeless. As it remains to be a big hit since it's first release in 2016. Throughout the years, its success has kept climbing reaching an all time high in 2022. Now in 2025, Season 5 is believed to reach the same level of success. Until then, we'll see you on the other side.
+```{r, echo=TRUE, results='hide', message=FALSE}
+#| code-fold: true
+#| code-summary: "Show the code"
+
+library(ggplot2)    
+library(ggtext)
+st_data <- GLOBAL_TOP_10 |>
+  filter(show_title %in% "Stranger Things") |>
+  group_by(season_title) |>
+  summarize(views = sum(weekly_hours_viewed)) |>
+  mutate(season_title = if_else(is.na(season_title), "Stranger Things 1", season_title)) |>
+  mutate(views = views/1e6) |>
+  mutate(season = c(2, 3, 4, 1)) |>
+  arrange(season)
+head(st_data)
+
+#FORECAST
+model <- lm(views ~ season, data = st_data)
+summary(model)
+
+predicted_s5 <- -394.9 + (454.7 *5)
+
+st_data <- rbind(st_data , data.frame(season_title = "Stranger Things 5", views=predicted_s5, season=5))
+head(st_data)
+
+# BAR PLOT
+ggplot(st_data, aes(x = season, y = views)) +
+      geom_bar(stat = "identity",fill = "darkred") +
+      labs(title = "Stranger Things Total Viewership per Season",
+       y = "Views (in millions)",
+       x = "Season") +
+  theme_minimal() +
+  theme(
+    plot.title = element_markdown(size = 20, face = "bold")
+  )
+```
+ 
+# TASK 6: NETFLIX IN INDIA PRESS RELEASE
+
+# India's Untapped Viewership Growth Potential
+Hindi cinema is taking the world by storm. The total weekly hours viewed for Netflix’s Top 10 films in India soared **46%** from 2023 to 2024. Hindi films aren’t just dominating India’s Top 10 — they’re captivating global audiences too. *RRR* alone charted in **64 countries** and held its spot in the Top 10s for a record of **25 consecutive weeks**.
+
+[![](https://multilingual.com/wp-content/uploads/2022/06/RRR-Movie-Review_1648825470847_1648825479894.jpg)](https://youtu.be/NgBoMJy386M)
+
+```{r}
+#| code-fold: true
+#| code-summary: "Show the code"
+
+# Weekly Hour Views Increase 46%
+# GLOBAL_TOP_10 |>
+#   filter(str_detect(show_title, "(Hindi)")) |> 
+#   mutate(year = format(week, "%Y")) |>
+#   group_by(year) |>
+#   filter(year %in% c(2023, 2024)) |>
+#   summarize(total_weekly_hours_viewed = sum(weekly_hours_viewed)) |>  
+#   format_titles() |>
+#   datatable(options=list(searching=FALSE, info=FALSE))
+
+# Hindi film ranking top 10s in other countries
+COUNTRY_TOP_10 |>
+  filter(str_detect(show_title, "(Hindi)")) |>
+  group_by(show_title) |>
+  distinct(country_name) |>
+  count(show_title) |>
+  arrange(desc(n)) |>   
+  format_titles() |>
+  datatable(options=list(searching=FALSE, info=FALSE), colnames = c("Show Title", "# of Countries"))
+
+# Hindi shows total weeks in top 10
+COUNTRY_TOP_10 |>
+  filter(country_name %in% "India") |>
+  filter(str_detect(show_title, "(Hindi)")) |>
+  group_by(show_title) |>
+  count(show_title) |> 
+  arrange(desc(n)) |>
+  format_titles() |>
+  datatable(options=list(searching=FALSE, info=FALSE), colnames = c("Show Title", "Weeks in Top 10"))
+```
+<br></br>
+
+English TV and films continue to draw strong viewership in India, highlighting Netflix’s relevance and weekly usage across the country. With national hits like *Money Heist*, *Squid Game*, and *Stranger Things* dominating the Top 3 spots week after week in India.
+```{r}
+#| code-fold: true
+#| code-summary: "Show the code"
+
+# English & Hindi Films top 10 in India
+COUNTRY_TOP_10 |>
+  filter(country_name %in% "India") |>
+  group_by(show_title) |>
+  count(show_title) |>
+  arrange(desc(n)) |>
+  format_titles() |>
+  datatable(options=list(searching=FALSE, info=FALSE), colnames = c("Show Title", "Weeks in Top 10"))
+```
+
+
+<br></br>
+In additional to increase in hourly views, there's also been a **33%** rise in the number of viewers between 2023 to 2024. Estimating **11 million** weekly viewers in 2023 to **14.6 million ** in 2024.
+```{r, echo=TRUE, results='hide', message=FALSE}
+#| code-fold: true
+#| code-summary: "Show the code"
+
+# Hindi-language films and TV
+
+# use this viewership data to estimate the size of Netflix’s customer base in India: compute a few points and discuss the long term growth trends
+
+# filling in NA values and CALCULATING TOTAL WEEKLY VIEWS BY YEAR
+hindi_year <- GLOBAL_TOP_10 |>
+  filter(str_detect(show_title, "(Hindi)")) |>
+  group_by(show_title) |>
+  mutate(runtime_mins = runtime*60) |>
+  mutate(year = format(week, "%Y")) |>
+  select(week, year, show_title, weekly_hours_viewed, runtime_mins, runtime) |>
+  mutate(runtime_mins = if_else(show_title == "Sir (Hindi)", 99, runtime_mins))|>
+  mutate(runtime_mins = if_else(show_title == "RRR (Hindi)", 186, runtime_mins)) |>
+  mutate(runtime_mins = if_else(show_title == "Thunivu (Hindi)", 146, runtime_mins)) |>
+  mutate(runtime_mins = if_else(show_title == "Kantara (Hindi)", 148, runtime_mins)) |>
+  mutate(runtime_mins = if_else(show_title == "GodFather (Hindi)", 157, runtime_mins)) |>
+  mutate(runtime_mins = if_else(show_title == "Shabaash Mithu (Hindi)", 156, runtime_mins)) |>
+  mutate(runtime_mins = if_else(show_title == "Foot Fairy (Hindi)", 115, runtime_mins)) |>
+  mutate(runtime_mins = if_else(show_title == "Major (Hindi)", 146, runtime_mins)) |>
+  mutate(runtime_mins = if_else(show_title == "Raw (Hindi)", 155, runtime_mins)) |>
+  mutate(runtime_mins = if_else(show_title == "Radhe Shyam (Hindi)",138, runtime_mins)) |>
+  mutate(runtime = runtime_mins/60) |>
+  group_by(year) |>
+  filter(year %in% c(2023, 2024)) |>
+  mutate(estimated_weekly_views = weekly_hours_viewed/runtime) |>
+  summarize(estimated_views = sum(estimated_weekly_views)) |>
+  mutate(estimated_views = estimated_views/1e06)
+  # format_titles() |>
+  # datatable(options=list(searching=FALSE, info=FALSE))
+
+ggplot(hindi_year, aes(x = year, y = estimated_views)) +
+    geom_bar(stat = "identity",fill = "orange") +
+    labs(title = "Rise in Weekly Views in India",
+     y = "Views (in millions)",
+     x = "Year") +
+theme_minimal() +
+theme(
+  plot.title = element_markdown(size = 20, face = "bold")
+)
+```
+<br></br>
+
+Looking at the trend over the past years, viewership has shown a modest rise. Although there's high variability due to outliers seen in 2022. Given the global appeal of Hindi films, Netflix should broaden their accessibility, not just in India, but worldwide. The next wave of Hindi cinema could take audiences even further and continue to drive these numbers up.
+```{r, echo=TRUE, results='hide', message=FALSE}
+#| code-fold: true
+#| code-summary: "Show the code"
+# TRENDLINE GRAPH BY WEEK 
+hindi_week <- GLOBAL_TOP_10 |>
+  filter(str_detect(show_title, "(Hindi)")) |>
+  group_by(show_title) |>
+  mutate(runtime_mins = runtime*60) |>
+  select(week, show_title, weekly_hours_viewed, runtime_mins, runtime) |>
+  mutate(runtime_mins = if_else(show_title == "Sir (Hindi)", 99, runtime_mins))|>
+  mutate(runtime_mins = if_else(show_title == "RRR (Hindi)", 186, runtime_mins)) |>
+  mutate(runtime_mins = if_else(show_title == "Thunivu (Hindi)", 146, runtime_mins)) |>
+  mutate(runtime_mins = if_else(show_title == "Kantara (Hindi)", 148, runtime_mins)) |>
+  mutate(runtime_mins = if_else(show_title == "GodFather (Hindi)", 157, runtime_mins)) |>
+  mutate(runtime_mins = if_else(show_title == "Shabaash Mithu (Hindi)", 156, runtime_mins)) |>
+  mutate(runtime_mins = if_else(show_title == "Foot Fairy (Hindi)", 115, runtime_mins)) |>
+  mutate(runtime_mins = if_else(show_title == "Major (Hindi)", 146, runtime_mins)) |>
+  mutate(runtime_mins = if_else(show_title == "Raw (Hindi)", 155, runtime_mins)) |>
+  mutate(runtime_mins = if_else(show_title == "Radhe Shyam (Hindi)",138, runtime_mins)) |>
+  mutate(runtime = runtime_mins/60) |>
+  mutate(estimated_weekly_views = weekly_hours_viewed/runtime) |>
+  mutate(estimated_weekly_views = estimated_weekly_views/1e06) |>
+  arrange(week) 
+
+ggplot(hindi_week, aes(x = week, y = estimated_weekly_views)) +
+geom_point(color = "orange", size = 3) +          # scatter points
+geom_smooth(method = "lm", se = FALSE, color = "red") +  # trendline with confidence interval
+labs(title = "Growth in Weekly Views Over Time",
+     x = "Date",
+     y = "Weekly Views (in millions)") +
+theme_minimal() +
+theme(
+  plot.title = element_markdown(size = 20, face = "bold")
+) 
+```
+
+# TASK 7: 3RD PRESS RELEASE
+
+# COMING IN HOT 
+Netflix hits the gas once more as *Formula 1: Drive to Survive* races into Season 8, premiering this March. Once again, taking viewers behind the scenes of the major events that has happened this past F1 season. Following the journey of the new set of rookies, highlights of jaw-dropping victories, and the drama that unfolds behind the hot seats. 
+
+[![](https://miro.medium.com/1*BQaoAKsk1x0JgcEZBu9-mA.jpeg)](https://www.youtube.com/watch?v=wGXmiTzyp2k&pp=ygUTZjEgZHJpdmUgdG8gc3Vydml2ZQ%3D%3D)
+
+### Hitting the Breaks... Can it Make a Comeback?
+Although not shown in the dataset, *Formula 1: Drive to Survive: Season 1* aired back in 2019 and has since been renewed every year. However, viewership stats per season has seen a decline in the past seasons. Therefore, the question is: can season 8 surpass past seasons?
+```{r, echo=TRUE, results='hide', message=FALSE}
+#| code-fold: true
+#| code-summary: "Show the code"
+
+# Totalling views per season
+f1 <- GLOBAL_TOP_10 |>
+  filter(show_title %in% "Formula 1: Drive to Survive") |>
+  mutate(season = str_sub(season_title,-1)) |>
+  group_by(season) |>
+  summarize(total_hours = sum(weekly_hours_viewed)/1e06) |> 
+  arrange(desc(total_hours)) |> 
+  glimpse()
+
+# BAR PLOT
+ggplot(f1, aes(x = season, y = total_hours)) +
+      geom_bar(stat = "identity",fill = "slateblue") +
+      labs(title = "F1: Drive to Survive Viewership per Season",
+       y = "Views (in millions)",
+       x = "Season") +
+  theme_minimal() +
+  theme(
+    plot.title = element_markdown(size = 20, face = "bold")
+  )
+```
+
+### Undeniable Global Reach
+F1 is one of the most globally accessible sports, broadcasted worldwide, as drivers race across the globe tackling tracks with some of the tightest turns at neck breaking speeds. For that reason, it’s no surprise that the Netflix show has reached the Top 10 in so many countries. Aside from offering a behind the scene look at the season, the sports docuseries provides detailed recaps of each race for viewers who may have missed them live due to time zone differences. 
+```{r}
+#| code-fold: true
+#| code-summary: "Show the code"
+COUNTRY_TOP_10 |>
+  filter(show_title %in% "Formula 1: Drive to Survive") |>
+  group_by(season_title) |>
+  distinct(country_name) |>
+  count(season_title) |>
+  arrange(desc(n)) |>
+  format_titles() |>
+  datatable(options=list(searching=FALSE, info=FALSE), colnames = c("Season", "Countries"))
+```
+
+### 💡 Marketing Solution 
+* Following the well perceived *F1: The Movie* released earlier this summer, there are surely new fans attracted to the high speed sport. Press should cross promote season 8 to these new fans and introduce them to the beginner friendly Netflix's series. Not just tuning in for the new season, but catching up with older seasons to understand rivalries and history.
+* With so many new rookie drivers this season, brief social media introductions would help build their personal brands while generating excitement for the new season and giving viewers a glimpse of what’s to come in their careers. 
+* Collaborations between drivers and TikTok influencers or sports media would help broaden exposure and attract new viewers. 
