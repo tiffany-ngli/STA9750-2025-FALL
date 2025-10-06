@@ -238,7 +238,7 @@ GLOBAL_TOP_10 |>
 
 # 📈 US #1 Films That Didn’t Debut at the Top
 
-```{r, message=FALSE}
+```{r}
 #| code-fold: true
 #| code-summary: "Show the code"
 # 9. How many Films reached Number 1 in the US but did not originally debut there? 
@@ -286,7 +286,7 @@ COUNTRY_TOP_10 |>
 
 # Darker. Scarier. Stranger Things Returns. 
 
-*Stranger Things Season 5*  is set to premier later this year, concluding the series with the long anticipated showdown with Vecna. Will the team defeat Vecna once and for all? If so, at what cost? Tune in **November 26, 2025** for Volume I's release to find out. 
+*Stranger Things Season 5* is set to premier later this year, concluding the series with the long anticipated showdown with Vecna. Will the team defeat Vecna once and for all? If so, at what cost? Tune in **November 26, 2025** for Volume I's release to find out. 
 
 [![Click image for trailer](https://dnm.nflximg.net/api/v6/BvVbc2Wxr2w6QuoANoSpJKEIWjQ/AAAAQUq_sj3y88nqrcBnRm69rS7xur65HYgLkCS5MxHbA-7Dvd72b3Mek4eoiDb5Rb4-dzpaJz260toRGHQIeKdtAvUxWmmk5hio-pquv_pTESDyz5XQuv6K0vlqFQvsPXGuMA0OfA7q27_8cBy9ds-8RroPX1Y.jpg?r=9d3)](https://www.youtube.com/watch?v=iKZyYdwS3Wg)
 <br></br>
