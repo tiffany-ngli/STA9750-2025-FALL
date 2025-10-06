@@ -10,6 +10,9 @@ website:
   navbar:
     background: primary
     search: false
+    right:
+      - text: "MP#01"
+        # href: "./preassignments.html"
     
 format:
   html:
