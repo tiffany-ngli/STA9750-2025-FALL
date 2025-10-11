@@ -8,7 +8,7 @@ website:
     Course Projects for STA 9750 at Baruch College
   site-url: "https://tiffany-ngli.github.io/STA9750-2025-FALL/"
   navbar:
-    background: "#703D57"
+    background: primary
     search: false
     right:
       - text: "MP#01"
