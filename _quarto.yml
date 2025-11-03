@@ -16,7 +16,7 @@ website:
     
 format:
   html:
-    theme: minty
+    theme: morph
     toc: false
 
 editor:
