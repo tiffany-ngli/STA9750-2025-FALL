@@ -907,8 +907,10 @@ A factor influencing the NIMBY status seen in California is the high poverty and
 <li>Safer, more stable neighborhoods are supported by reducing housing insecurity, keeping people off the streets, and therefore reducing conflict.</li>
 <li>Improved quality of life for all.</li>
 
+<br>
+
 **California's Key Findings**
-##Target NIMBY Cities
+Target NIMBY Cities
 <li>San Francisco-Oakland-Hayward</li>
 <li>San Jose-Sunnyvale-Santa Clara</li>
 <li>Los Angeles-Long Beach-Anaheim</li>
@@ -949,6 +951,7 @@ kable(CA_nimby_table) |>
   kable_styling(bootstrap_options = c("striped", "hover"), full_width = FALSE) |>
   scroll_box(height = "400px")
 ```
+<br>
 **Join the Cause**
 <br>
 <li>[California YIMBY](URL "https://cayimby.org/")</li>
