@@ -953,6 +953,6 @@ kable(CA_nimby_table) |>
 <br>
 **Join the Cause**
 <br>
-<li>[California YIMBY]("https://cayimby.org/")</li>
-<li>[YIMBY Action](“https://yimbyaction.org/”)</li>
-<li>[Abundant Housing LA](“https://abundanthousingla.org/”)</li>
+<li>[California YIMBY](https://cayimby.org/)</li>
+<li>[YIMBY Action](https://yimbyaction.org/)</li>
+<li>[Abundant Housing LA](https://abundanthousingla.org/)</li>
