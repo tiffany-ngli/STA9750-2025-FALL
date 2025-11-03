@@ -909,6 +909,7 @@ A factor influencing the NIMBY status seen in California is the high poverty and
 
 
 **California's Key Findings**
+<br>
 Target NIMBY Cities
 <li>San Francisco-Oakland-Hayward</li>
 <li>San Jose-Sunnyvale-Santa Clara</li>
