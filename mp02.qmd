@@ -931,7 +931,6 @@ kable(CA_nimby_table) |>
   kable_styling(bootstrap_options = c("striped", "hover"), full_width = FALSE) |>
   scroll_box(height = "400px")
 ```
-<br>
 # TASK 7: POLICY BRIEF 
 Sponsors: Representatives from California
 
@@ -950,7 +949,6 @@ A factor influencing the NIMBY status seen in California is the high poverty and
 <li>Safer, more stable neighborhoods are supported by reducing housing insecurity, keeping people off the streets, and therefore reducing conflict.</li>
 <li>Improved quality of life for all.</li>
 
-<br>
 
 **Join the Cause**
 <br>
