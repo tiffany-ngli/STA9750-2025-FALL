@@ -889,8 +889,26 @@ ggplot(map_data_nimby, aes(x = long, y = lat, group = group, fill = yimby_cities
 ```
 Taking the difference between YIMBY and NIMBY cities within a state, the following gradient fill map of the United States was generated. The fill indicates whether the overall state is more YIMBY in green, NIMBY in red, or neutral in white. In congruence with the previous table, California is identified as the most NIMBY state. While Florida appears to be the most YIMBY state. 
 
-<center><h3>California's Key Findings</h3></center>
-**Target NIMBY Cities**
+# TASK 7: POLICY BRIEF 
+Sponsors: Representatives from California
+
+**Introduction**
+<br>
+California was identified to be the most NIMBY state with the most NIMBY cities. Let’s examine why that is the case and what can be done to advocate for housing accessibility and affordability. 
+
+**Background**
+<br>
+A factor influencing the NIMBY status seen in California is the high poverty and homelessness rates that drive stigma and NIMBY mentality. Although government funding and support are allocated towards aiding the homeless population, the issue persists in locating these shelters and services due to opposition and resistance from fellow residents. Another driving factor is simply the stagnant housing growth, which does not sustain the population growth. 
+
+**Why You Should Care**
+<br>
+<li>Affordable housing options for those relocated for work.</li>
+<li>Lower rent pressure for local Californians.</li>
+<li>Safer, more stable neighborhoods are supported by reducing housing insecurity, keeping people off the streets, and therefore reducing conflict.</li>
+<li>Improved quality of life for all.</li>
+
+**California's Key Findings**
+##Target NIMBY Cities
 <li>San Francisco-Oakland-Hayward</li>
 <li>San Jose-Sunnyvale-Santa Clara</li>
 <li>Los Angeles-Long Beach-Anaheim</li>
@@ -931,28 +949,8 @@ kable(CA_nimby_table) |>
   kable_styling(bootstrap_options = c("striped", "hover"), full_width = FALSE) |>
   scroll_box(height = "400px")
 ```
-# TASK 7: POLICY BRIEF 
-Sponsors: Representatives from California
-
-**Introduction**
-<br>
-California was identified to be the most NIMBY state with the most NIMBY cities. Let’s examine why that is the case and what can be done to advocate for housing accessibility and affordability. 
-
-**Background**
-<br>
-A factor influencing the NIMBY status seen in California is the high poverty and homelessness rates that drive stigma and NIMBY mentality. Although government funding and support are allocated towards aiding the homeless population, the issue persists in locating these shelters and services due to opposition and resistance from fellow residents. Another driving factor is simply the stagnant housing growth, which does not sustain the population growth. 
-
-**Why You Should Care**
-<br>
-<li>Affordable housing options for those relocated for work.</li>
-<li>Lower rent pressure for local Californians.</li>
-<li>Safer, more stable neighborhoods are supported by reducing housing insecurity, keeping people off the streets, and therefore reducing conflict.</li>
-<li>Improved quality of life for all.</li>
-
-<br>
 **Join the Cause**
 <br>
 <li>[California YIMBY](URL "https://cayimby.org/")</li>
 <li>[YIMBY Action](URL “https://yimbyaction.org/”)</li>
 <li>[Abundant Housing LA](URL “https://abundanthousingla.org/”)</li>
-
