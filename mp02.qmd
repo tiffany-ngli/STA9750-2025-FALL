@@ -942,16 +942,16 @@ California was identified to be the most NIMBY state with the most NIMBY cities.
 <br>
 A factor influencing the NIMBY status seen in California is the high poverty and homelessness rates that drive stigma and NIMBY mentality. Although government funding and support are allocated towards aiding the homeless population, the issue persists in locating these shelters and services due to opposition and resistance from fellow residents. Another driving factor is simply the stagnant housing growth, which does not sustain the population growth. 
 
-**Why You Should Care** 
-<br>
-<li>Affordable housing options for those relocated for work.</li>
-<li>Lower rent pressure for local Californians.</li>
-<li>Safer, more stable neighborhoods are supported by reducing housing insecurity, keeping people off the streets, and therefore reducing conflict.</li>
-<li>Improved quality of life for all.</li>
+<!-- **Why You Should Care**  -->
+<!-- <br> -->
+<!-- <li>Affordable housing options for those relocated for work.</li> -->
+<!-- <li>Lower rent pressure for local Californians.</li> -->
+<!-- <li>Safer, more stable neighborhoods are supported by reducing housing insecurity, keeping people off the streets, and therefore reducing conflict.</li> -->
+<!-- <li>Improved quality of life for all.</li> -->
 
 
-**Join the Cause**
-<br>
-<li>[California YIMBY](URL "https://cayimby.org/")</li>
-<li>[YIMBY Action](URL “https://yimbyaction.org/”)</li>
-<li>[Abundant Housing LA](URL “https://abundanthousingla.org/”)</li>
+<!-- **Join the Cause** -->
+<!-- <br> -->
+<!-- <li>[California YIMBY](URL "https://cayimby.org/")</li> -->
+<!-- <li>[YIMBY Action](URL “https://yimbyaction.org/”)</li> -->
+<!-- <li>[Abundant Housing LA](URL “https://abundanthousingla.org/”)</li> -->
