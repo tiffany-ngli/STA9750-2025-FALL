@@ -1,0 +1,959 @@
+---
+title: "Mini-Project #02"
+---
+
+# TASK #1: DATA IMPORT
+
+The objective of this mini-project is to identify America's most "Yes In My Back Yard" (YIMBY) cities. Unlike, NIMBY, these cities advocate for housing development to aid housing affordability. To begin, the datasets used are derived from the census Bureau, American Community Survey (ACS), downloaded annual housing units, CBSA for understanding transit factors, paired with income data from the Bureau of Labor Statistics (BLS). The relationship diagram below will help us keep track of columns in which the tables can be merged to find meaningful connections. 
+
+### RELATION DIAGRAM
+<img src="./RELATION_DIAGRAM.png" width=100%>
+<br><br>
+American Community Survey census data
+```{r, echo=TRUE, results='hide', message=FALSE}
+#| code-fold: true
+#| code-summary: "Show the code"
+if(!dir.exists(file.path("data", "mp02"))){
+    dir.create(file.path("data", "mp02"), showWarnings=FALSE, recursive=TRUE)
+}
+
+ensure_package <- function(pkg){
+    pkg <- as.character(substitute(pkg))
+    options(repos = c(CRAN = "https://cloud.r-project.org"))
+    if(!require(pkg, character.only=TRUE, quietly=TRUE)) install.packages(pkg)
+    stopifnot(require(pkg, character.only=TRUE, quietly=TRUE))
+}
+
+ensure_package(tidyverse)
+ensure_package(glue)
+ensure_package(readxl)
+ensure_package(tidycensus)
+
+get_acs_all_years <- function(variable, geography="cbsa",
+                              start_year=2009, end_year=2023){
+    fname <- glue("{variable}_{geography}_{start_year}_{end_year}.csv")
+    fname <- file.path("data", "mp02", fname)
+    
+    if(!file.exists(fname)){
+        YEARS <- seq(start_year, end_year)
+        YEARS <- YEARS[YEARS != 2020] # Drop 2020 - No survey (covid)
+        
+        ALL_DATA <- map(YEARS, function(yy){
+            tidycensus::get_acs(geography, variable, year=yy, survey="acs1") |>
+                mutate(year=yy) |>
+                select(-moe, -variable) |>
+                rename(!!variable := estimate)
+        }) |> bind_rows()
+        
+        write_csv(ALL_DATA, fname)
+    }
+    
+    read_csv(fname, show_col_types=FALSE)
+}
+
+# Household income (12 month)
+INCOME <- get_acs_all_years("B19013_001") |>
+    rename(household_income = B19013_001)
+
+# Monthly rent
+RENT <- get_acs_all_years("B25064_001") |>
+    rename(monthly_rent = B25064_001)
+
+# Total population
+POPULATION <- get_acs_all_years("B01003_001") |>
+    rename(population = B01003_001)
+
+# Total number of households
+HOUSEHOLDS <- get_acs_all_years("B11001_001") |>
+    rename(households = B11001_001)
+```
+<br><br>
+Permit data from the United States Census Bureau 
+```{r, echo=TRUE, results='hide', message=FALSE}
+#| code-fold: true
+#| code-summary: "Show the code"
+
+get_building_permits <- function(start_year = 2009, end_year = 2023){
+    fname <- glue("housing_units_{start_year}_{end_year}.csv")
+    fname <- file.path("data", "mp02", fname)
+    
+    if(!file.exists(fname)){
+        HISTORICAL_YEARS <- seq(start_year, 2018)
+        
+        HISTORICAL_DATA <- map(HISTORICAL_YEARS, function(yy){
+            historical_url <- glue("https://www.census.gov/construction/bps/txt/tb3u{yy}.txt")
+                
+            LINES <- readLines(historical_url)[-c(1:11)]
+
+            CBSA_LINES <- str_detect(LINES, "^[[:digit:]]")
+            CBSA <- as.integer(str_sub(LINES[CBSA_LINES], 5, 10))
+
+            PERMIT_LINES <- str_detect(str_sub(LINES, 48, 53), "[[:digit:]]")
+            PERMITS <- as.integer(str_sub(LINES[PERMIT_LINES], 48, 53))
+            
+            data_frame(CBSA = CBSA,
+                       new_housing_units_permitted = PERMITS, 
+                       year = yy)
+        }) |> bind_rows()
+        
+        CURRENT_YEARS <- seq(2019, end_year)
+        
+        CURRENT_DATA <- map(CURRENT_YEARS, function(yy){
+            current_url <- glue("https://www.census.gov/construction/bps/xls/msaannual_{yy}99.xls")
+            
+            temp <- tempfile()
+            
+            download.file(current_url, destfile = temp, mode="wb")
+            
+            fallback <- function(.f1, .f2){
+                function(...){
+                    tryCatch(.f1(...), 
+                             error=function(e) .f2(...))
+                }
+            }
+            
+            reader <- fallback(read_xlsx, read_xls)
+            
+            reader(temp, skip=5) |>
+                na.omit() |>
+                select(CBSA, Total) |>
+                mutate(year = yy) |>
+                rename(new_housing_units_permitted = Total)
+        }) |> bind_rows()
+        
+        ALL_DATA <- rbind(HISTORICAL_DATA, CURRENT_DATA)
+        
+        write_csv(ALL_DATA, fname)
+        
+    }
+    
+    read_csv(fname, show_col_types=FALSE)
+}
+
+PERMITS <- get_building_permits()
+```
+<br><br> 
+Industry codes from the Bureau of Labor Statistics
+```{r, echo=TRUE, results='hide', message=FALSE}
+#| code-fold: true
+#| code-summary: "Show the code"
+
+ensure_package(httr2)
+ensure_package(rvest)
+get_bls_industry_codes <- function(){
+    fname <- fname <- file.path("data", "mp02", "bls_industry_codes.csv")
+    
+    if(!file.exists(fname)){
+    
+        resp <- request("https://www.bls.gov") |> 
+            req_url_path("cew", "classifications", "industry", "industry-titles.htm") |>
+            req_headers(`User-Agent` = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:143.0) Gecko/20100101 Firefox/143.0") |> 
+            req_error(is_error = \(resp) FALSE) |>
+            req_perform()
+        
+        resp_check_status(resp)
+        
+        naics_table <- resp_body_html(resp) |>
+            html_element("#naics_titles") |> 
+            html_table() |>
+            mutate(title = str_trim(str_remove(str_remove(`Industry Title`, Code), "NAICS"))) |>
+            select(-`Industry Title`) |>
+            mutate(depth = if_else(nchar(Code) <= 5, nchar(Code) - 1, NA)) |>
+            filter(!is.na(depth))
+        
+        naics_table <- naics_table |> 
+            filter(depth == 4) |> 
+            rename(level4_title=title) |> 
+            mutate(level1_code = str_sub(Code, end=2), 
+                   level2_code = str_sub(Code, end=3), 
+                   level3_code = str_sub(Code, end=4)) |>
+            left_join(naics_table, join_by(level1_code == Code)) |>
+            rename(level1_title=title) |>
+            left_join(naics_table, join_by(level2_code == Code)) |>
+            rename(level2_title=title) |>
+            left_join(naics_table, join_by(level3_code == Code)) |>
+            rename(level3_title=title) |>
+            select(-starts_with("depth")) |>
+            rename(level4_code = Code) |>
+            select(level1_title, level2_title, level3_title, level4_title, 
+                   level1_code,  level2_code,  level3_code,  level4_code)
+    
+        write_csv(naics_table, fname)
+    }
+    
+    read_csv(fname, show_col_types=FALSE)
+    
+}
+
+INDUSTRY_CODES <- get_bls_industry_codes()
+```
+<br><br>
+Wage data from the Bureau of Labor Statistics
+```{r, echo=TRUE, results='hide', message=FALSE}
+#| code-fold: true
+#| code-summary: "Show the code"
+
+ensure_package(httr2)
+ensure_package(rvest)
+get_bls_qcew_annual_averages <- function(start_year=2009, end_year=2023){
+    fname <- glue("bls_qcew_{start_year}_{end_year}.csv.gz")
+    fname <- file.path("data", "mp02", fname)
+    
+    YEARS <- seq(start_year, end_year)
+    YEARS <- YEARS[YEARS != 2020] # Drop Covid year to match ACS
+    
+    if(!file.exists(fname)){
+        ALL_DATA <- map(YEARS, .progress=TRUE, possibly(function(yy){
+            fname_inner <- file.path("data", "mp02", glue("{yy}_qcew_annual_singlefile.zip"))
+            
+            if(!file.exists(fname_inner)){
+                request("https://www.bls.gov") |> 
+                    req_url_path("cew", "data", "files", yy, "csv",
+                                 glue("{yy}_annual_singlefile.zip")) |>
+                    req_headers(`User-Agent` = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:143.0) Gecko/20100101 Firefox/143.0") |> 
+                    req_retry(max_tries=5) |>
+                    req_perform(fname_inner)
+            }
+            
+            if(file.info(fname_inner)$size < 755e5){
+                warning(sQuote(fname_inner), "appears corrupted. Please delete and retry this step.")
+            }
+            
+            read_csv(fname_inner, 
+                     show_col_types=FALSE) |> 
+                mutate(YEAR = yy) |>
+                select(area_fips, 
+                       industry_code, 
+                       annual_avg_emplvl, 
+                       total_annual_wages, 
+                       YEAR) |>
+                filter(nchar(industry_code) <= 5, 
+                       str_starts(area_fips, "C")) |>
+                filter(str_detect(industry_code, "-", negate=TRUE)) |>
+                mutate(FIPS = area_fips, 
+                       INDUSTRY = as.integer(industry_code), 
+                       EMPLOYMENT = as.integer(annual_avg_emplvl), 
+                       TOTAL_WAGES = total_annual_wages) |>
+                select(-area_fips, 
+                       -industry_code, 
+                       -annual_avg_emplvl, 
+                       -total_annual_wages) |>
+                # 10 is a special value: "all industries" , so omit
+                filter(INDUSTRY != 10) |> 
+                mutate(AVG_WAGE = TOTAL_WAGES / EMPLOYMENT)
+        })) |> bind_rows()
+        
+        write_csv(ALL_DATA, fname)
+    }
+    
+    ALL_DATA <- read_csv(fname, show_col_types=FALSE)
+    
+    ALL_DATA_YEARS <- unique(ALL_DATA$YEAR)
+    
+    YEARS_DIFF <- setdiff(YEARS, ALL_DATA_YEARS)
+    
+    if(length(YEARS_DIFF) > 0){
+        stop("Download failed for the following years: ", YEARS_DIFF, 
+             ". Please delete intermediate files and try again.")
+    }
+    
+    ALL_DATA
+}
+
+WAGES <- get_bls_qcew_annual_averages()
+```
+<br>
+The following are all the libraries and functions used to complete this project.
+```{r, echo=TRUE, results='hide', message=FALSE}
+#| code-fold: true
+#| code-summary: "Show the code"
+
+library(dplyr)
+library(knitr)
+library(kableExtra)
+library(ggplot2)
+library(scales)
+library(shiny)
+library(gganimate)
+library(tidyr)
+library(stringr)
+library(DT)
+library(maps)
+
+# Creates the function format_titles with attribute of dataframe
+format_titles <- function(df){
+    colnames(df) <- str_replace_all(colnames(df), "_", " ") |> str_to_title()
+    df
+}
+```
+<br>
+
+# TASK 2: MULTI-TABLE QUESTIONS
+```{r, echo=TRUE, results='hide', message=FALSE}
+#| code-fold: true
+#| code-summary: "Show the code"
+#1. Which CBSA (by name) permitted the largest number of new housing in the decade from 2010 to 2019 (inclusive)?
+
+Q2_1 <- PERMITS |>
+  left_join(HOUSEHOLDS, join_by(CBSA == GEOID, year == year)) |>
+  filter(year >= 2010 & year <= 2019) |>
+  group_by(CBSA, NAME) |>
+  summarize(new_housing_units_permitted = sum(new_housing_units_permitted)) |>
+  arrange(desc(new_housing_units_permitted)) |>
+  format_titles()
+```
+
+<center><h3>CBSAs Arranged From Highest to Lowest New Housing Permits Issued Between (2010-2019)</h3></center>
+**Dallas, TX Metro Area** (CBSA Number 19100) had the largest number of issued permits of new housing units between 2010 to 2019. Totaling to **460,826** within the decade.
+
+```{r}
+#| code-fold: true
+#| code-summary: "Show the code"
+
+kable(Q2_1) |>
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = FALSE) |>
+  scroll_box(height = "400px")
+```
+
+<br><br>
+
+```{r, echo=TRUE, results='hide', message=FALSE}
+#| code-fold: true
+#| code-summary: "Show the code"
+
+#2. In what year did Albuquerque, NM (CBSA Number 10740) permit the most new housing units? 
+
+Q2_2 <- PERMITS |>
+  left_join(HOUSEHOLDS, join_by(CBSA == GEOID, year==year)) |>
+  filter(CBSA == 10740) |>
+  arrange(desc(new_housing_units_permitted)) |>
+  select(c("CBSA", "new_housing_units_permitted", "year")) |>
+  format_titles() 
+```
+
+
+<center><h3>Albuquerque, NM Metro Area New Housing Permit (2010-2023)</h3></center>
+In **Albuquerque, NM Metro Area (CBSA Number 10740)** issued the most new housing permits in **2021**, with **4,021** units. 
+```{r}
+#| code-fold: true
+#| code-summary: "Show the code"
+kable(Q2_2) |>
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = FALSE) |>
+  scroll_box(height = "400px")
+```
+<br><br>
+```{r, echo=TRUE, results='hide', message=FALSE}
+#| code-fold: true
+#| code-summary: "Show the code"
+
+#3. Which state (not CBSA) had the highest average individual income in 2015? To answer this question, you will need to first compute the total income per CBSA by multiplying the average household income by the number of households, and then sum total income and total population across all CBSAs in a state. With these numbers, you can answer this question.
+
+Q2_3 <- HOUSEHOLDS |>
+  left_join(INCOME, join_by(GEOID == GEOID, NAME == NAME, year == year)) |>
+  left_join(POPULATION, join_by(GEOID == GEOID, NAME==NAME, year == year)) |>
+  mutate(state = str_extract(NAME, ", (.{2})", group=1)) |>
+  filter(year == 2015) |>
+  group_by(GEOID) |>
+  mutate(total_income = household_income * households) |> #total income per CBSA
+  group_by(state) |>
+  summarize(total_state_income = sum(total_income), #sum total income by state
+            total_state_population = sum(population)) |> #sum of population by state
+  mutate(average_individual_income = round(total_state_income/total_state_population,2)) |>
+  arrange(desc(average_individual_income)) |>
+  format_titles()
+```
+
+
+<center><h3>Average Individual Income per State/Territory in the U.S. in 2015</h3></center>
+**DC** had the highest individual income in **2015** out of all U.S. Territories and States of **$33,232.88**.
+```{r}
+#| code-fold: true
+#| code-summary: "Show the code"
+
+kable(Q2_3) |>
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = FALSE) |>
+  scroll_box(height = "400px")
+```
+<br><br>
+
+
+```{r, echo=TRUE, results='hide', message=FALSE}
+#| code-fold: true
+#| code-summary: "Show the code"
+
+#4. Data scientists and business analysts are recorded under NAICS code 5182. What is the last year in which the NYC CBSA had the most data scientists in the country? In recent, the San Francisco CBSA has had the most data scientists.
+
+#creates GEOID column in WAGES to join with INCOME
+WAGES_ID <- WAGES |>
+  mutate(GEOID = substring(FIPS, 2)) |>
+  mutate(GEOID = paste0(GEOID,0)) |>
+  mutate(GEOID = as.numeric(GEOID))
+
+#get the employment for NAICS for each year in NYC
+NYC_ds <- WAGES_ID |>
+  left_join(INCOME, join_by(GEOID == GEOID, YEAR == year)) |>
+  filter(INDUSTRY == 5182) |>
+  filter(GEOID == 35620) |>
+  arrange(desc(EMPLOYMENT))
+
+#for each year, find the max employment for NAICS 5182
+max_ds <- WAGES |>
+  filter(INDUSTRY == 5182) |>
+  group_by(YEAR) |> 
+  summarize(max_employment = max(EMPLOYMENT))
+
+#select years when max employment equals that of NYC employment for NAICS 5182, indicating NYC had the most data scientists in the country
+Q2_4 <- NYC_ds |>
+  left_join(max_ds, join_by(YEAR)) |>
+  filter(max_employment == EMPLOYMENT) |>
+  select(-c("FIPS", "household_income", "max_employment", "GEOID")) |>
+  arrange(desc(YEAR)) |>
+  format_titles()
+```
+
+<center><h3>Years NYC CBSA had the Most Data Scientists</h3></center>
+**2015** was the last year **NYC** employed the most data scientists and business analysts in the country. As of 2023, San Francisco had employed the most with 32,961. 
+```{r}
+#| code-fold: true
+#| code-summary: "Show the code"
+
+kable(Q2_4) |>
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = FALSE) |>
+  scroll_box(height = "310px")
+```
+
+<center><h3>Percentage of Wages Earned by the Finance & Insurance Industry in NYC</h3></center>
+**4.09%** of NYC CBSA's total wages was earned by people employed in the finance and insurance industry, totaling to **$1.7 trillion** from 2009 to 2023. Tracked on an annual basis, the peak percentage was **4.6%** in **2014**.
+```{r, echo=TRUE, results='hide', message=FALSE}
+#| code-fold: true
+#| code-summary: "Show the code"
+
+#5. What fraction of total wages in the NYC CBSA was earned by people employed in the finance and insurance industries (NAICS code 52)? In what year did this fraction peak?
+NYC <- WAGES_ID |>
+  left_join(INCOME, join_by(GEOID == GEOID, YEAR == year)) |>
+  filter(GEOID == 35620) |>
+  summarize(NYC_total_wages = sum(TOTAL_WAGES))
+
+NYC_finance <- WAGES_ID |>
+  left_join(INCOME, join_by(GEOID==GEOID, YEAR == year)) |>
+  filter(GEOID == 35620) |>
+  filter(INDUSTRY == 52) |>
+  summarize(NYC_finance_total_wages = sum(TOTAL_WAGES))
+
+fraction <- (1.746907e+12/4.274572e+13)*100
+
+nyc_annual_wages <- WAGES_ID |>
+  left_join(INCOME, join_by(GEOID == GEOID, YEAR == year)) |>
+  filter(GEOID == 35620) |> 
+  group_by(YEAR) |> 
+  summarize(NYC_annual_total_wages = sum(TOTAL_WAGES)) 
+
+finance_annual_wages <- WAGES_ID |>
+  left_join(INCOME, join_by(GEOID == GEOID, YEAR == year)) |>
+  filter(GEOID == 35620) |>
+  filter(INDUSTRY == 52) |>
+  group_by(YEAR) |>
+  summarize(annual_finance_wages = sum(TOTAL_WAGES))
+
+peak <- nyc_annual_wages |>
+  left_join(finance_annual_wages, join_by(YEAR)) |>
+  mutate(fraction = round( ((annual_finance_wages/NYC_annual_total_wages)*100) ,2)) 
+
+peak_df <- as.data.frame(peak)
+
+ggplot(peak_df, aes(x = YEAR, y = fraction)) +
+  geom_line(color = "black") +
+  geom_point() +
+  geom_point(data = peak, color = "red", size = 3) +  # highlight peak
+  scale_x_continuous(breaks = seq(min(peak_df$YEAR), max(peak_df$YEAR), by = 1)) +
+  labs(
+    x = "Year",
+    y = "%"
+  ) +
+  theme_minimal()
+```
+
+# TASK 3: INITIAL VISUALIZATION
+
+<center><h3> Correlation Between Monthly Rent and Household Income </h3></center>
+The positive slope of the linear model shown in red, indicates higher household income tend to have higher rent. The correlation coefficient was calculated to be ≈0.83 meaning household income and monthly rent have a relative strong positive correlation.
+```{r, echo=TRUE, results='hide', message=FALSE}
+#| code-fold: true
+#| code-summary: "Show the code"
+
+#1. The relationship between monthly rent and average household income per CBSA in 2019.
+
+RENT_VS_INCOME <- RENT |>
+  full_join(INCOME, join_by(GEOID, NAME, year)) |>
+  filter(year == 2019)
+  
+ggplot(RENT_VS_INCOME, aes(x = household_income, y = monthly_rent)) +
+  geom_point(alpha = 0.5, color="blue") +
+  geom_smooth(method = "lm", se = TRUE, color = "red") +
+  labs(
+    title = "Monthly Rent vs Household Income in 2019 ",
+    x = "Household Income ($)",
+    y = "Monthly Rent ($)"
+  ) +
+  scale_x_continuous(labels = dollar_format()) +
+  scale_y_continuous(labels = dollar_format()) +
+  theme_minimal() +
+  theme(plot.title = element_text(face = "bold", hjust = 0.5))
+
+# calculate correlation coefficient
+#cor(RENT_VS_INCOME$household_income, RENT_VS_INCOME$monthly_rent, method = "pearson")
+```
+<center><h3>Health Care Employment</h3></center>
+Health care and social services are considered the most stable jobs due to their high demand and job security. The graph shows a fitted linear model between total employment and healthcare employment, where areas with high total employment see high employment in healthcare. Throughout the years, the healthcare workforce has seen a modest increase. 
+```{r}
+#| code-fold: true
+#| code-summary: "Show the code"
+
+#2. The relationship between total employment and total employment in the health care and social services sector (NAICS 62) across different CBSAs. Design your visualization so that it is possible to see the evolution of this relationship over time.
+
+healthcare <- WAGES_ID |>
+  filter(INDUSTRY == 62) |>
+  group_by(YEAR, GEOID) |>
+  summarize(total_healthcare_employment = sum(EMPLOYMENT), .groups = "drop")
+
+grouped_CBSA <- WAGES_ID |>
+  group_by(YEAR, INDUSTRY, GEOID) |>
+  summarize(total_employment= sum(EMPLOYMENT), .groups = "drop")
+
+Q3_2 <- grouped_CBSA |>
+  left_join(healthcare, join_by(GEOID, YEAR)) |>
+  mutate(total_employment = total_employment/1000000) |>
+  mutate(total_healthcare_employment = total_healthcare_employment/1000000)
+
+
+library(ggplot2)
+library(ggpubr)
+
+Q3_2 |>
+  ggplot(aes(x = total_employment,
+             y = total_healthcare_employment,
+             color = factor(GEOID))) +
+  geom_point(alpha = 0.7, size = 2) +
+  geom_smooth(method = "lm", se = TRUE, color = "black") +
+  facet_wrap(~ YEAR, scales = "free") +
+  scale_color_viridis_d(option = "plasma") +
+  labs(
+    title = "Steady Increase in Health Care Employment",
+    subtitle = "With yearly trend lines",
+    x = "Total Employment (in millions)",
+    y = "Total Healthcare Employment (in millions)",
+    color = "CBSA (GEOID)"
+  ) +
+  theme_bw(base_size = 12) +
+  theme(
+    plot.title = element_text(size = 16, face = "bold"),
+    plot.subtitle = element_text(size = 12),
+    strip.text = element_text(size = 12, face = "bold"),
+    panel.grid.minor = element_blank(),
+    panel.grid.major = element_line(linetype = "dotted", linewidth = 0.3),
+    panel.border = element_rect(color = "grey50"),
+    legend.position = "none"
+  )
+
+```
+
+<center><h3>Average Household Size per CBSA from 2019 to 2023</h3></center>
+Highlighting the averages of **NYC (35620) in blue** and **LA in black (31100 & 31080)**, we see a slow decline in average household size throughout the years. With NYC having a lower percentage dropping from **2.8%** to **2.6%**. While LA had the higher percentage of the two, from **3.1%** to **2.8%**. The difference seen between the two cities could be due to housing availability, where LA has much larger land for larger housing supporting larger family sizes. Conversely, NYC has extreme population density, but scarcer land and smaller residential spaces; therefore, accounting for the smaller percentage. The collective decrease seen throughout the years could be credited to the increase in cost of living that puts more financial pressure on larger households. 
+```{r, message=FALSE}
+#| code-fold: true
+#| code-summary: "Show the code"
+#3. The evolution of average household size over time. Use different lines to represent different CBSAs.
+
+#find the total household population per CBSA
+household <- HOUSEHOLDS |>
+  group_by(GEOID, year) |>
+  summarise(total_household = sum(households), .groups = "drop")
+  
+total_pop<- POPULATION |>
+  group_by(GEOID, year, NAME) |>
+  summarize(total_population = sum(population), .groups = "drop")
+
+Q3_3 <- household |>
+  left_join(total_pop, join_by(GEOID, year)) |>
+  mutate(average_household_size = total_population / total_household)
+
+library(gghighlight)
+
+Q3_3 |> 
+    ggplot(aes(x=year, y=average_household_size, color=GEOID, group = GEOID)) + 
+    geom_point() +
+    geom_line() +
+    xlab("Year") +
+    ylab("Average Household Size") +
+    theme_bw() +
+    labs(
+      title = "Average Household Size from 2009 to 2023",
+      subtitle = "The average household size in LA has been greater than that of NYC",
+    ) +
+    gghighlight(GEOID == 31080 |
+                GEOID == 31100 |
+                GEOID == 35620) 
+```
+
+# TASK 4: RENT BURDEN
+Roughly 34% of American households are rent-occupied. However, the cost of living and minimum wage vary across the states. To get a better sense of how financially feasible rent is per GEOID, we'll be comparing rent cost with average household income, weighted by population. By doing so, it allows a fair comparison between large cities and small towns. The table below has three calculated values: Rent to Income Ratio (the percentage of income allocated to pay rent), Weighted Average Rent Burden Ratio (the percentage weighted by population), and Standardized Rent Burden Ratio (standardized where 0 = low burden and 100 = severe burden).
+```{r}
+#| code-fold: true
+#| code-summary: "Show the code"
+
+rent_burden <- RENT |>
+  left_join(INCOME, by = c("GEOID", "NAME", "year")) |>
+  left_join(POPULATION, by = c("GEOID", "NAME", "year")) |>  # ensure 'population' column exists
+  mutate(
+    rent_to_income_ratio = (monthly_rent * 12) / household_income * 100 #calculates rent
+  ) |>
+  group_by(GEOID, NAME) |>
+  mutate(
+    weighted_avg_rb = sum(rent_to_income_ratio * population, na.rm = TRUE) / sum(population, na.rm = TRUE), #weighted by population
+    standardized_rb_pop = (rent_to_income_ratio - min(rent_to_income_ratio)) /
+                          (max(rent_to_income_ratio) - min(rent_to_income_ratio)) * 100 #standardizing rent to income ratio lowest = 0 highest = 100
+  ) |>
+  ungroup() 
+
+rent_burden_titled  <- rent_burden |>
+  select(-c("monthly_rent", "household_income", "population")) |>
+  format_titles()
+
+datatable(rent_burden_titled, rownames = FALSE) |>
+  formatStyle(
+    'GEOID',
+  )
+```
+
+# Polarized Rent Burden in Puerto Rico 
+In this case, standardized rent burden ratio is calculated relative per GEOID. Picking Puerto Rico for deeper analysis, the table was filtered to observe changes over time. Initial data from 2009 showcases a large gap between rent burden mainly driven by disparities in household income as it appears monthly rent is relatively the same across cities in the island.
+```{r}
+#| code-fold: true
+#| code-summary: "Show the code"
+
+# PR <- geoid_minmax |>
+#   filter(grepl("PR", NAME)) |>
+#   group_by(GEOID, year) |>
+#   arrange(desc(standardized_rb_minmax))
+# 
+
+PR <- rent_burden |>
+  filter(grepl("PR", NAME)) |>
+  group_by(GEOID, year) |>
+  arrange(year)
+
+datatable(PR, rownames = FALSE) |>
+  formatStyle(
+    'GEOID',
+  )
+```
+<br><br>
+The corresponding heatmap puts into visual perspective the distribution of rent burden across cities in Puerto Rico throughout the years. Mayagüez, with a standardized rent burden ratio of 100, locating it as the GEOID with the highest rent burden, consistently ranked moderate (orange) to high (red) ratio from 2009 to 2023. Assessing Puerto Rico as a whole, we can see rent burden takes a toll on the whole island, even affluent cities like San Juan. 
+```{r}
+#| code-fold: true
+#| code-summary: "Show the code"
+PR <- as.data.frame(PR)
+ggplot(PR, aes(x = factor(year), y = NAME, fill=standardized_rb_pop)) +
+  geom_tile(color = "grey80") +  # adds grid lines
+  scale_fill_gradientn(colors = c("white", "yellow", "orange", "red"),
+                       limits = c(0, 100),
+                       name = "Standardized Rent Burden (0-100)") +
+  labs(title = "Rent Burden Heatmap in Puerto Rican Cities", x = "Year", y = "GEOID Area Name") +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(size = 5),  # X-axis text
+    axis.text.y = element_text(size = 5)                           # Y-axis text
+  )
+```
+
+# Average Standardized Rent Burden Ratio by State From Highest to Lowest
+Zooming out and assessing rent burden by state and taking the average throughout the year, it demonstrates Puerto Rico suffers most from affordable housing. While North Dakota has the least burden. 
+```{r}
+#| code-fold: true
+#| code-summary: "Show the code"
+
+#find average per GEOID
+geoid_avgs <- rent_burden |>
+  group_by(GEOID, NAME) |>
+  summarize(avg_rb = mean(rent_to_income_ratio, na.rm = TRUE), .groups = "drop",
+            average_weighted_rb = mean(weighted_avg_rb, na.rm= TRUE))
+
+# #standardizing (0-100)
+geoid_minmax <- geoid_avgs %>%
+  mutate(standardized_rb_minmax = (avg_rb - min(avg_rb)) / (max(avg_rb) - min(avg_rb)) * 100)
+
+geoid_minmax_ordered <- geoid_avgs %>%
+  mutate(standardized_rb_minmax = (avg_rb - min(avg_rb)) / (max(avg_rb) - min(avg_rb)) * 100) |>
+  mutate(state = str_extract(NAME, ", (.{2})", group=1))|>
+  group_by(state) |>
+  summarize(average_standardized_rb = mean(standardized_rb_minmax), .groups = "drop")|>
+  arrange(desc(average_standardized_rb))
+
+datatable(geoid_minmax_ordered, rownames = FALSE) |>
+formatStyle(
+  'average_standardized_rb',
+  background = styleColorBar(range(geoid_minmax_ordered$average_standardized_rb, na.rm = TRUE), 'lightblue'),
+  backgroundSize = '98% 88%',
+  backgroundRepeat = 'no-repeat',
+  backgroundPosition = 'center'
+)
+
+```
+
+# TASK 5: HOUSING GROWTH 
+Now we'll be examining if housing growth is keeping up with population growth. Observing the max fixed housing growth rate, it indicates Mobile, Alabama, has made the most efforts in building new houses, although projecting a minimal population growth. However, this can be explained by how Mobile, Alabama, is notorious for its high crime rates in both violent and property crimes, making it less ideal for residential use. Arranging the table from max housing growth instant to least, shows Florida being the most proactive with housing accessibility specific to the given year. 
+```{r}
+#| code-fold: true
+#| code-summary: "Show the code"
+
+housing_growth <- POPULATION |>
+  left_join(PERMITS, join_by(GEOID == CBSA, year == year)) |>
+  group_by(GEOID, NAME) |>
+  arrange(year) |>
+  mutate(
+    pop_lag5 = lag(population, 5),                     # Population 5yrs ago
+    pop_growth_5yr = population - pop_lag5,           # 5yr population growth 
+    housing_growth_instant = (new_housing_units_permitted / population), # supply of houses relative to population
+    housing_growth_rate = new_housing_units_permitted / pop_growth_5yr #rate based measure in the next 5 yrs
+  ) |>
+  ungroup() |>
+  mutate(
+    housing_growth_instant = round(housing_growth_instant, 5),
+    housing_growth_rate = round(housing_growth_rate, 5)
+  ) |>
+  mutate(
+    fixed_housing_growth_rate = if_else(pop_growth_5yr <= 0, NA_real_, housing_growth_rate)
+  ) |>
+  drop_na(pop_growth_5yr, new_housing_units_permitted) |>
+  select(-c("population", "new_housing_units_permitted")) |>
+  arrange(desc(housing_growth_instant))
+
+housing_growth_titled <- housing_growth |> 
+  format_titles()
+
+datatable(housing_growth_titled, rownames = FALSE) |>
+formatStyle(
+  'Geoid',
+)  
+```
+Introducing the housing supply index, scaled where 100 indicates plentiful housing availability relative to demand and 0 indicates a lack of housing with high demand. It's important to note it does not take into account affordability, merely a composite score between the instant housing growth rate and that 5 years later. To make more sense of the normalized rate (aka Rate Norm) it was scaled as part of the Housing Supply Index, where 100 is the max observed composite score and 0 is the min observed.  
+```{r}
+#| code-fold: true
+#| code-summary: "Show the code"
+
+combined_metric <- housing_growth |>
+  mutate(
+    inst_norm = housing_growth_instant / median(housing_growth_instant, na.rm = TRUE),
+    rate_norm = fixed_housing_growth_rate / median(fixed_housing_growth_rate, na.rm = TRUE),
+    housing_supply_index = (inst_norm + rate_norm) / 2 #creates an equal weight composite score 
+  ) |>
+  mutate(rate_norm_capped = pmin(rate_norm, 5)) |> # cap extreme outliers
+  mutate(
+    inst_norm = round(inst_norm, 5),
+    rate_norm = round(rate_norm, 5),
+    housing_supply_index = round(housing_supply_index, 5)
+  ) |>
+  mutate(housing_supply_index_scaled = rescale(housing_supply_index, to = c(0,100))) |>
+  select(c("GEOID","NAME", "year", "housing_growth_instant", "housing_growth_rate", "inst_norm", "rate_norm", "housing_supply_index_scaled")) 
+
+combined_metric_titled <- combined_metric |>
+  format_titles()
+
+datatable(combined_metric_titled, rownames = FALSE) |>
+formatStyle(
+  'Geoid',
+) 
+```
+
+# TASK 6: VISUALIZATIONS
+For the scope of this analysis, YIMBY cities will be identified by high rent burden with high house supply index as an indicator of initiative to housing accessibility. On the other hang NIMBY cities will be identified by high rent burden with low house supply index where housing is more restrictive. For further classification, two additional metrics were added including growth-friendly low burden, for cities with low rent burden and high house supply index, and stable/low burden, for cities with low burden and low housing supply index. The plot below depicts the spread of categories.
+```{r}
+#| code-fold: true
+#| code-summary: "Show the code"
+
+yimby01 <- rent_burden |>
+  left_join(combined_metric, join_by(GEOID, NAME, year))
+
+```
+```{r}
+#| code-fold: true
+#| code-summary: "Show the code"
+# Median splits
+median_rb <- median(yimby01$standardized_rb_pop, na.rm = TRUE)
+median_hsi <- median(yimby01$housing_supply_index_scaled, na.rm = TRUE)
+
+# Classify
+yimby01 <- yimby01 |>
+  mutate(
+    classification = case_when(
+      standardized_rb_pop >= median_rb & housing_supply_index_scaled >= median_hsi ~ "YIMBY",
+      standardized_rb_pop >= median_rb & housing_supply_index_scaled < median_hsi ~ "NIMBY",
+      standardized_rb_pop < median_rb & housing_supply_index_scaled >= median_hsi ~ "Growth-friendly low burden",
+      TRUE ~ "Stable/low burden"
+    )
+  )
+
+ggplot(yimby01, aes(x = housing_supply_index_scaled, 
+                    y = standardized_rb_pop, 
+                    color = classification)) +
+  geom_point(size = 3, alpha = 0.8) +
+  # add median reference lines
+  geom_hline(yintercept = median(yimby01$standardized_rb_pop, na.rm = TRUE), linetype = "dashed", color = "gray50") +
+  geom_vline(xintercept = median(yimby01$housing_supply_index_scaled, na.rm = TRUE), linetype = "dashed", color = "gray50") +
+  labs(
+    x = "Housing Supply Index (Scaled)",
+    y = "Standardized Rent Burden",
+    color = "Classification",
+    title = "YIMBY vs NIMBY Cities"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(hjust = 0.5),
+    legend.position = "right"
+  )
+```
+<center><h3>Count of YIMBY vs NIMBY Cities Within States</h3></center>
+The results indicate California the state with the most NIMBY cities while Pennsylvania with the most YIMBY cities. Notably, there are full NIMBY states with zero YIMBY cities including Conneticut, Illinois, New Hampshire, Rhode Island, and West Virginia. 
+```{r}
+#| code-fold: true
+#| code-summary: "Show the code"
+nimby_table <- yimby01 %>%
+  filter(classification %in% "NIMBY") %>%
+  select(GEOID, NAME, classification)
+
+yimby_table <- yimby01 %>%
+  filter(classification %in% "YIMBY") %>%
+  select(GEOID, NAME, classification) 
+
+states_nimby_yimby <- yimby01 |>
+  mutate(state = str_extract(NAME, ", (.{2})", group=1)) |>
+  filter(classification %in% c("NIMBY", "YIMBY")) |>
+  group_by(state) |>
+  summarize(nimby_cities = sum(classification == "NIMBY"),
+            yimby_cities = sum(classification == "YIMBY")) 
+
+max_nimby_row <- which(states_nimby_yimby$nimby_cities == max(states_nimby_yimby$nimby_cities, na.rm = TRUE))
+max_yimby_row <- which(states_nimby_yimby$nimby_cities == max(states_nimby_yimby$yimby_cities, na.rm = TRUE))
+
+states_nimby_yimby |>
+  kable() |>
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = FALSE) |>
+  scroll_box(height = "310px") |>
+  row_spec(max_nimby_row, background = "#ef476f") |>
+  row_spec(max_yimby_row, background = "#06d6a0")
+```
+
+```{r}
+#| code-fold: true
+#| code-summary: "Show the code"
+
+library(maps)
+us_states <- map_data("state")
+
+# convert two-letter codes to lowercase full names
+state_abbrev <- data.frame(
+  state = state.abb,
+  state_name = tolower(state.name)
+)
+
+states_nimby_yimby <- states_nimby_yimby %>%
+  left_join(state_abbrev, by = "state")
+
+map_data_nimby <- us_states %>%
+  left_join(states_nimby_yimby, by = c("region" = "state_name"))
+
+ggplot(map_data_nimby, aes(x = long, y = lat, group = group, fill = yimby_cities - nimby_cities)) +
+  geom_polygon(color = "gray80", linewidth = 0.3) +         # lighter borders, thinner lines
+  coord_fixed(1.3) +
+  scale_fill_gradient2(
+    low = "#ef476f",     # soft pink/red for NIMBY-heavy
+    mid = "white",     # light gray/white for neutral
+    high = "#06d6a0",    # soft teal/green for YIMBY-heavy
+    midpoint = 0,
+    na.value = "grey90",
+    name = "YIMBY - NIMBY Scale"
+  ) +
+  labs(
+    title = "YIMBY vs. NIMBY Cities by State",
+    subtitle = "Green = more YIMBY cities, Red = more NIMBY cities"
+  ) +
+  theme_minimal(base_size = 14) +
+  theme(
+    axis.text = element_blank(),
+    axis.title = element_blank(),
+    panel.grid = element_blank(),
+    plot.title = element_text(face = "bold", size = 18),
+    plot.subtitle = element_text(size = 12),
+    legend.position = "right"
+  )
+```
+Taking the difference between YIMBY and NIMBY cities within a state, the following gradient fill map of the United States was generated. The fill indicates whether the overall state is more YIMBY in green, NIMBY in red, or neutral in white. In congruence with the previous table, California is identified as the most NIMBY state. While Florida appears to be the most YIMBY state. 
+
+<center><h3>California's Key Findings</h3></center>
+**Target NIMBY Cities**
+<li>San Francisco-Oakland-Hayward</li>
+<li>San Jose-Sunnyvale-Santa Clara</li>
+<li>Los Angeles-Long Beach-Anaheim</li>
+<li>Santa Cruz-Watsonville</li>
+<li>Santa Barbara-Santa Maria-Goleta</li>
+<br>
+```{r}
+#| code-fold: true
+#| code-summary: "Show the code"
+
+CA <- rent_burden |>
+  filter(grepl("CA", NAME)) |>
+  group_by(GEOID, year) |>
+  arrange(desc(standardized_rb_pop))
+
+CA <- as.data.frame(CA)
+ggplot(CA, aes(x = factor(year), y = NAME, fill=standardized_rb_pop)) +
+  geom_tile(color = "grey80") +  # adds grid lines
+  scale_fill_gradientn(colors = c("white", "yellow", "orange", "red"),
+                       limits = c(0, 100),
+                       name = "Standardized Rent Burden (0-100)") +
+  labs(title = "Rent Burden Heatmap in Californian Cities", x = "Year", y = "GEOID Area Name") +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(size = 5),  # X-axis text
+    axis.text.y = element_text(size = 5)                           # Y-axis text
+  )
+
+CA_nimby_table <- yimby01 |>
+  filter(classification %in% "NIMBY") |>
+  select(GEOID, NAME, classification, rent_to_income_ratio, standardized_rb_pop,housing_supply_index_scaled) |>
+  mutate(state = str_extract(NAME, ", (.{2})", group=1)) |>
+  filter(state %in% "CA") |>
+  arrange(desc(standardized_rb_pop)) |>
+  format_titles()
+
+kable(CA_nimby_table) |>
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = FALSE) |>
+  scroll_box(height = "400px")
+```
+<br>
+# TASK 7: POLICY BRIEF 
+Sponsors: Representatives from California
+
+**Introduction**
+<br>
+California was identified to be the most NIMBY state with the most NIMBY cities. Let’s examine why that is the case and what can be done to advocate for housing accessibility and affordability. 
+
+**Background**
+<br>
+A factor influencing the NIMBY status seen in California is the high poverty and homelessness rates that drive stigma and NIMBY mentality. Although government funding and support are allocated towards aiding the homeless population, the issue persists in locating these shelters and services due to opposition and resistance from fellow residents. Another driving factor is simply the stagnant housing growth, which does not sustain the population growth. 
+
+**Why You Should Care** 
+<br>
+<li>Affordable housing options for those relocated for work.</li>
+<li>Lower rent pressure for local Californians.</li>
+<li>Safer, more stable neighborhoods are supported by reducing housing insecurity, keeping people off the streets, and therefore reducing conflict.</li>
+<li>Improved quality of life for all.</li>
+
+<br>
+
+**Join the Cause**
+<br>
+<li>[California YIMBY](URL "https://cayimby.org/")</li>
+<li>[YIMBY Action](URL “https://yimbyaction.org/”)</li>
+<li>[Abundant Housing LA](URL “https://abundanthousingla.org/”)</li>
