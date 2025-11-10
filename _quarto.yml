@@ -15,7 +15,6 @@ website:
         href: "https://tiffany-ngli.github.io/STA9750-2025-FALL/mp01.html"
       - text: "MP#02"
         href: "https://tiffany-ngli.github.io/STA9750-2025-FALL/mp02.html"
-    
 format:
   html:
     theme: morph
