@@ -12,9 +12,9 @@ website:
     search: false
     right:
       - text: "MP#01"
-        href: "https://tiffany-ngli.github.io/STA9750-2025-FALL/mp01.html"
+        href: "./mp01.html"
       - text: "MP#02"
-        href: "https://tiffany-ngli.github.io/STA9750-2025-FALL/mp02.html"
+        href: "./mp02.html"
 format:
   html:
     theme: morph
