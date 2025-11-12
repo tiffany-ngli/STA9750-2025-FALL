@@ -122,7 +122,6 @@ tree_sf <- tree %>%
 summary(tree_sf)
 
 ```
-
 # TASK 3: PLOT ALL TREE POINTS
 ```{r}
 #| code-fold: true
@@ -137,4 +136,3 @@ ggplot() +
     caption = "Source: NYC Open Data"
   )
 ```
-
