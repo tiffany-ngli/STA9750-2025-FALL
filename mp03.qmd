@@ -1,0 +1,138 @@
+---
+title: "Mini-Project #03"
+---
+# TASK #1: DOWNLOAD NYC CITY COUNCIL DISTRICT BOUNDARIES 
+```{r, echo=TRUE, results='hide', message=FALSE}
+#| code-fold: true
+#| code-summary: "Show the code"
+
+library(sf)
+
+#CREATES THE FUNCTION download_boundaries TO ACQUIRE DATA, DOES NOT TAKE PARAMTERS
+download_boundaries <- function(){
+  
+  #CREATES FOLDER mp03 WITHIN data, IF NEEDED
+  if(!dir.exists(file.path("data", "mp03"))){
+    dir.create(file.path("data", "mp03"), showWarnings=FALSE, recursive=TRUE)
+  }
+  
+  #DOWNLOADS ZIP FILE, IF NEEDED
+  url = "https://s-media.nyc.gov/agencies/dcp/assets/files/zip/data-tools/bytes/city-council/nycc_25c.zip"
+  destfile <- "data/mp03/nycc_25.zip"
+  
+  if(!file.exists(destfile)){
+    download.file(url, destfile = destfile, mode="wb")
+  }
+  
+  #UNZIPS FILE, IF NEEDED
+  unzipped_dir <- "data/mp03/nycc_25"
+  if (!dir.exists(unzipped_dir)) {
+  unzip(destfile, exdir = unzipped_dir)
+  }
+  
+  #READ IN SHP FILE
+  nyc_boundaries <- st_read("data/mp03/nycc_25/nycc_25c")
+  
+  #TRANSFORM shp file TO WGS 84
+  nyc_boundaries_wgs84 <- st_transform(nyc_boundaries, crs = "WGS84")
+}
+
+nyc <- download_boundaries()
+```
+
+# TASK 2: DOWNLOAD TREE POINTS
+```{r, echo=TRUE, results='hide', message=FALSE}
+#| code-fold: true
+#| code-summary: "Show the code"
+
+library(httr)
+library(jsonlite)
+library(sf)
+library(dplyr)
+  
+download_trees <- function(){
+  #API URL
+  api_url <- "https://data.cityofnewyork.us/resource/hn5i-inap.json"
+  
+  # PARAMETERS 
+  limit <- 10000   # Safe chunk size
+  offset <- 0
+  all_data <- list()
+  
+  # RETRIEVE THE FOLLOWING COLUMNS FROM THE DATASET
+  keep_cols <- c(
+    "objectid", "dbh", "tpstructure", "tpcondition", "stumpdiameter",
+    "plantingspaceglobalid", "geometry", "globalid", "genusspecies",
+    "createddate", "updateddate", "planteddate",
+    "riskrating", "riskratingdate", "location"
+  )
+  
+  #CREATE A FOR LOOP 
+  repeat {
+    query_url <- paste0(api_url, "?$limit=", limit, "&$offset=", offset)
+    message("Downloading offset ", offset, " ...")
+  
+    response <- GET(query_url)
+    txt <- content(response, "text", encoding = "UTF-8")
+  
+    #STOP IF EMPTY
+    if (nchar(txt) == 0) {
+      break
+    }
+  
+    #PARSE SAFELY 
+    page_data <- tryCatch(fromJSON(txt, flatten = TRUE), error = function(e) NULL)
+    if (is.null(page_data) || nrow(page_data) == 0) {
+      break
+    }
+  
+    #KEEP ONLY CONSISTENT COLUMNS
+    page_data <- page_data[, intersect(names(page_data), keep_cols), drop = FALSE]
+  
+    #APPEND
+    all_data[[length(all_data) + 1]] <- page_data
+  
+    #STARTS NEW PAGE 
+    offset <- offset + limit
+  }
+  
+  #COMBINE ALL PAGES
+  tree_data <- bind_rows(all_data)
+  
+  #SAVE AS NEW CSV FILE
+  dir.create("data/mp03", recursive = TRUE, showWarnings = FALSE)
+  write.csv(tree_data, "data/mp03/nyc_trees_clean.csv", row.names = FALSE)
+  
+  return(tree_data)
+}
+
+tree <- download_trees()
+
+#OVERVIEW OF tree_data
+#ISSUE: geometry type is characters instead of geompoints
+summary(tree)
+
+#CREATE tree_sf TO HAVE GEOMETRY POINTS
+tree_sf <- tree %>%
+  mutate(geometry = st_as_sfc(geometry, crs = 4326)) %>%  
+  st_as_sf()
+
+#OVERVIEW OF tree_sf, GOOD TO GO FOR MAPPING
+summary(tree_sf)
+
+```
+
+# TASK 3: PLOT ALL TREE POINTS
+```{r}
+#| code-fold: true
+#| code-summary: "Show the code"
+library(ggplot2)
+ggplot() +
+  geom_sf(data = nyc, mapping=aes(), color = "black") +
+  geom_sf(data = tree_sf, color = "forestgreen", mapping=aes(), size = 0.3, alpha = 0.6) +
+  theme_minimal() +
+  labs(
+    title = "NYC Tree Points within Council District Boundaries",
+    caption = "Source: NYC Open Data"
+  )
+```
