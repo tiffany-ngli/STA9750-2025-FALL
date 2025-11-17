@@ -1,15 +1,22 @@
 ---
-title: "Mini-Project #03"
+title: "Mini-Project #03: Visualizing and Maintaining the Green Canopy of NYC"
 ---
+![](https://magazine.columbia.edu/sites/default/files/styles/wysiwyg_full_width_image/public/2023-04/Exp_trees.jpg?itok=sgza2Oc4)
 
-# TASK #1: DOWNLOAD NYC CITY COUNCIL DISTRICT BOUNDARIES 
+# TASK 1: DOWNLOAD NYC CITY COUNCIL DISTRICT BOUNDARIES 
+We'll begin by downloading data from the NYC Department of Planning site. It contains the boundaries of the 51 Council Districts that make up NYC, along with its geometry, allowing us to plot them and create maps. The following is a function used to respectfully retrieve the data from the NYC Open Data. 
 ```{r, echo=TRUE, results='hide', message=FALSE}
 #| code-fold: true
 #| code-summary: "Show the code"
 
+library(httr)
+library(jsonlite)
 library(sf)
+library(dplyr)
+library(sf)
+library(kableExtra)
 
-#CREATES THE FUNCTION download_boundaries TO ACQUIRE DATA, DOES NOT TAKE PARAMTERS
+#CREATES THE FUNCTION download_boundaries TO ACQUIRE DATA, DOES NOT TAKE PARAMETERS
 download_boundaries <- function(){
   
   #CREATES FOLDER mp03 WITHIN data, IF NEEDED
@@ -39,28 +46,34 @@ download_boundaries <- function(){
 }
 
 nyc <- download_boundaries()
+
+#CHANGING INTO DATAFRAMES FOR SHORTER RENDERING TIME
+nyc_df <- as.data.frame(nyc)
 ```
 
 # TASK 2: DOWNLOAD TREE POINTS
+Focusing on NYC's green spaces, we will need tree points data sourced from NYC Forestry Tree Points from NYC OpenData. The following function utilizes a while loop to respectfulling and efficiently retrieve all 1+ million observations are recorded. 
 ```{r, echo=TRUE, results='hide', message=FALSE}
 #| code-fold: true
 #| code-summary: "Show the code"
 
-library(httr)
-library(jsonlite)
-library(sf)
-library(dplyr)
-  
-download_trees <- function(){
-  #API URL
+download_trees <- function() {
+  # API URL
   api_url <- "https://data.cityofnewyork.us/resource/hn5i-inap.json"
   
-  # PARAMETERS 
-  limit <- 10000   # Safe chunk size
+  # PARAMETERS
+  limit <- 10000
   offset <- 0
   all_data <- list()
   
-  # RETRIEVE THE FOLLOWING COLUMNS FROM THE DATASET
+  # Get total count of rows
+  count_url <- paste0(api_url, "?$select=count(*)")
+  count_response <- GET(count_url)
+  count_text <- content(count_response, "text", encoding = "UTF-8")
+  total_rows <- as.numeric(fromJSON(count_text)$count)
+  message("Total rows to fetch: ", total_rows)
+  
+  #COLUMNS TO KEEP
   keep_cols <- c(
     "objectid", "dbh", "tpstructure", "tpcondition", "stumpdiameter",
     "plantingspaceglobalid", "geometry", "globalid", "genusspecies",
@@ -68,44 +81,41 @@ download_trees <- function(){
     "riskrating", "riskratingdate", "location"
   )
   
-  #CREATE A FOR LOOP 
-  repeat {
+  #LOOPS THROUGH TO OBTAIL ALL OBSERVATIONS
+  while (offset < total_rows) {
     query_url <- paste0(api_url, "?$limit=", limit, "&$offset=", offset)
     message("Downloading offset ", offset, " ...")
-  
+    
     response <- GET(query_url)
     txt <- content(response, "text", encoding = "UTF-8")
-  
-    #STOP IF EMPTY
-    if (nchar(txt) == 0) {
-      break
-    }
-  
-    #PARSE SAFELY 
+    
+    #PARSING
     page_data <- tryCatch(fromJSON(txt, flatten = TRUE), error = function(e) NULL)
-    if (is.null(page_data) || nrow(page_data) == 0) {
-      break
-    }
-  
-    #KEEP ONLY CONSISTENT COLUMNS
+    if (is.null(page_data) || nrow(page_data) == 0) break
+    
+    #KEEPING SPECIFIED COLUMNS
     page_data <- page_data[, intersect(names(page_data), keep_cols), drop = FALSE]
-  
+    
     #APPEND
     all_data[[length(all_data) + 1]] <- page_data
-  
-    #STARTS NEW PAGE 
+    
+    #GIVE API A QUICK REST INBETWEEN
     offset <- offset + limit
+    Sys.sleep(0.3) 
+    
+    options(scipen=999)
   }
   
-  #COMBINE ALL PAGES
+  # COMBINE
   tree_data <- bind_rows(all_data)
   
-  #SAVE AS NEW CSV FILE
+  # SAVE TO CSV
   dir.create("data/mp03", recursive = TRUE, showWarnings = FALSE)
   write.csv(tree_data, "data/mp03/nyc_trees_clean.csv", row.names = FALSE)
   
   return(tree_data)
 }
+
 
 tree <- download_trees()
 
@@ -121,18 +131,360 @@ tree_sf <- tree %>%
 #OVERVIEW OF tree_sf, GOOD TO GO FOR MAPPING
 summary(tree_sf)
 
+#TURNS tree_sf INTO DATAFRAME FOR FASTER RENDERING
+tree_sf_df <- as.data.frame(tree_sf)
+
 ```
+
 # TASK 3: PLOT ALL TREE POINTS
+Both datasets contain geographic coordinates that can be visualized on a map. Plotting the Council District boundaries will give us the base. By overlaying the tree point data, we can observe the distribution of greenery throughout NYC.
 ```{r}
 #| code-fold: true
 #| code-summary: "Show the code"
+
+
 library(ggplot2)
+
 ggplot() +
-  geom_sf(data = nyc, mapping=aes(), color = "black") +
-  geom_sf(data = tree_sf, color = "forestgreen", mapping=aes(), size = 0.3, alpha = 0.6) +
+  geom_sf(data = nyc, mapping=aes(), color = "black") + #NYC COUNCIL DISTRICT MAP
+  geom_sf(data = tree_sf_df$geometry, color = "darkgreen", mapping=aes(), size = 0.05, alpha = 0.2) + #TREE POINTS
+  scale_fill_viridis_c() +
   theme_minimal() +
   labs(
     title = "NYC Tree Points within Council District Boundaries",
-    caption = "Source: NYC Open Data"
+    caption = "Source: NYC OpenData"
   )
 ```
+
+### ZOOM IN FOR A CLOSER LOOK
+```{r}
+#| code-fold: true
+#| code-summary: "Show the code"
+
+library(leaflet)
+
+leaflet() |>
+  addTiles() |>
+  addPolygons(data = nyc, color = "black", fill = FALSE) |>
+  addCircleMarkers(data = tree_sf, radius = 2, color = "forestgreen", stroke = FALSE, fillOpacity = 0.5)
+
+```
+
+# TASK 4: DISTRICT-LEVEL ANALYSIS OF TREE COVERAGE
+Using these geographic coordinates we could join the datasets for further analysis. By doing so, we can locate the district of where certain tree species are located, adding meaning to our findings. 
+```{r, echo=TRUE, results='hide', message=FALSE}
+#| code-fold: true
+#| code-summary: "Show the code"
+
+#JOINS COUNCIL DISTRICT BOUNDARIES AND TREE POINTS BY FINDING ALL THE POINTS THAT LIE WITHIN THE MULTIPOLYGON OF EACH COUNCIL DISTRICT 
+nyc_trees <- st_join(nyc, tree_sf)
+
+nyc_trees_df <- as.data.frame(nyc_trees)
+```
+
+```{r, echo=TRUE, results='hide', message=FALSE}
+#| code-fold: true
+#| code-summary: "Show the code"
+
+#1. Which council district has the most trees? 
+tree_count <- nyc_trees_df |>
+  group_by(CounDist) |>
+  summarize(total_trees = n()) |>
+  arrange(desc(total_trees))
+```
+
+<center><h3>NYC Tree Counts by Council District</h3></center>
+**Council District 51** has the most trees, with a total of **70,965**. 
+```{r}
+#| code-fold: true
+#| code-summary: "Show the code"
+
+kable(tree_count) |>
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = FALSE) |>
+  scroll_box(height = "400px") |>
+  row_spec(which.max(tree_count$total_trees), background = "forestgreen", color = "white")
+```
+<br><br>
+```{r, echo=TRUE, results='hide', message=FALSE}
+#| code-fold: true
+#| code-summary: "Show the code"
+
+#2. Which council district has the highest density of trees? The Shape_Area column from the district shape file will be helpful here.
+density <- nyc_trees_df |>
+  group_by(CounDist, Shape_Area) |>
+  summarize(total_trees = n(), .groups = "drop") |>
+  ungroup() |>
+  mutate(tree_density = total_trees/Shape_Area) |>
+  arrange(desc(tree_density))
+```
+
+<center><h3>Tree Density by Council District</h3></center>
+**Council District 7** has the highest density of tree density of **0.0002835** trees per squared fit. 
+```{r}
+#| code-fold: true
+#| code-summary: "Show the code"
+
+kable(density) |>
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = FALSE) |>
+  scroll_box(height = "400px") |>
+  row_spec(which.max(density$tree_density), background = "forestgreen", color = "white")
+```
+
+<br><br>
+```{r, echo=TRUE, results='hide', message=FALSE}
+#| code-fold: true
+#| code-summary: "Show the code"
+
+#3. Which district has highest fraction of dead trees out of all trees?
+dead_trees <- nyc_trees_df |>
+  group_by(CounDist) |>
+  summarize(total_trees = n(),
+           dead_count = sum(tpcondition == "Dead", na.rm=TRUE)) |>
+  mutate(fraction_of_dead_trees = dead_count/total_trees) |>
+  arrange(desc(fraction_of_dead_trees))
+```
+
+<center><h3>Fraction of Dead Trees by Council District</h3></center>
+**Council District 32** has the highest fraction of dead trees of **0.14**, shown in red Although **Council District 51** has the highest count of dead trees, shown in yellow. 
+```{r}
+#| code-fold: true
+#| code-summary: "Show the code"
+
+kable(dead_trees) |>
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = FALSE) |>
+  scroll_box(height = "400px") |>
+  row_spec(which.max(dead_trees$fraction_of_dead_trees), background = "tomato", color = "white") |>
+  row_spec(which.max(dead_trees$dead_count), background = "yellow", color = "black")
+```
+<br><br>
+```{r, echo=TRUE, results='hide', message=FALSE}
+#| code-fold: true
+#| code-summary: "Show the code"
+
+#4. What is the most common tree species in Manhattan? 
+manhattan_species <- nyc_trees_df |>
+  filter(CounDist >= 1, CounDist<=10) |>
+  group_by(genusspecies) |>
+  summarize(total_trees = n()) |>
+  arrange(desc(total_trees))
+```
+
+<br><br>
+<center><h3>Counts of Tree Species Found in Manhattan</h3></center>
+Manhattan has **458** unique trees species throughout Council District 1 to 10. The most common one you'll spot is the **Gleditsia triacanthos var. inermis - Thornless honeylocust**, better known as Honey locust. 
+```{r}
+#| code-fold: true
+#| code-summary: "Show the code"
+
+kable(manhattan_species) |>
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = FALSE) |>
+  scroll_box(height = "400px") |>
+  row_spec(which.max(manhattan_species$total_trees), background = "forestgreen", color = "white")
+```
+<br><br>
+![](https://northernridgenursery.com/cdn/shop/products/ThornlessHoneyLocustTree2.jpg?v=1739819347)
+<br><br>
+```{r, echo=TRUE, results='hide', message=FALSE}
+#| code-fold: true
+#| code-summary: "Show the code"
+
+#5. What is the species of the tree closest to Baruch’s campus?
+baruch_longitude <- -73.9841
+baruch_latitude  <- +40.7402
+
+#CREATE A FUNCTION THAT TURNS GIVEN LATITUDE AND LONGITUDE COORDINATES INTO A GEOMPOINT
+new_st_point <- function(lat, lon){
+    # st_sfc expects x, y which flips the normal lat (N/S) + lon (W/E) ordering
+    st_sfc(point = st_point(c(lon, lat))) |>
+      st_set_crs("WGS84")
+}
+
+#CALLS ON FUNCTION TO CREATE GEOMPOINT FOR BARUCH 
+my_point <- new_st_point(baruch_latitude, baruch_longitude)
+
+library(units)
+
+#FILTERS THROUGH DATA TO FIND ALL TREES 100 METERS FROM BARUCH
+trees_near_baruch <- tree_sf_df |>
+  mutate(distance = st_distance(geometry, my_point)) |>
+  filter(distance < set_units(100, "m")) |> 
+  arrange(distance)
+```
+
+<center><h3>Trees Species Around Baruch College</h3></center>
+**Pyrus calleryana - Callery pear** is the closets tree to Baruch College with a distance of **19.58 meters** away.
+```{r}
+#| code-fold: true
+#| code-summary: "Show the code"
+
+trees_near_baruch_table <- trees_near_baruch |>
+  select(c('genusspecies', 'distance'))
+
+kable(trees_near_baruch_table) |>
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = FALSE) |>
+  scroll_box(height = "400px") |>
+  row_spec(which.min(trees_near_baruch$distance), background = "forestgreen", color = "white")
+```
+<br><br>
+![](https://a-z-animals.com/media/2022/09/callery-pear-blossom-picture-id1387491757.jpg)
+Fun Fact: Callery pear trees are classified as an invasive species in some states, and have been banned from planting because they tend to outcompete native species. 
+<br><br>
+<center><h3>Trees Within 100-Meter Radius of Baruch College</h3></center>
+```{r}
+#| code-fold: true
+#| code-summary: "Show the code"
+
+#CREATE A MAP TO LOCATE BARUCH AND TREES WITHIN A 100 METERS
+leaflet() |>
+  addTiles() |>
+  addCircleMarkers(data = trees_near_baruch$geometry, radius = 10, color = "forestgreen", stroke = FALSE, fillOpacity =2) |>
+  addCircleMarkers(data=my_point, radius=3, color="blue") |>
+  addPopups(baruch_longitude, baruch_latitude, 
+            "<b>Baruch College</b>") |>
+  setView(baruch_longitude, baruch_latitude, zoom=100)
+```
+
+# TASK 5: NYC PARKS PROPOSAL
+<center><h2>Branching Out for a Healthier District 5</h2></center>
+Council District 5 
+Neighborhoods Served: Upper East Side (Lenox Hill, Yorkville, Carnegie Hill) and Roosevelt Island
+
+### Overview: 
+Overall, New York City has maintained a healthy tree canopy, with relatively few trees classified as dead or in critical condition compared to the majority are rated as fair, good, or excellent. The bar graphs below depict the distribution of trees within each category. 
+```{r, echo=TRUE, results='hide', message=FALSE}
+#| code-fold: true
+#| code-summary: "Show the code"
+
+nyc_df_bargraph <- nyc_trees_df |>
+  group_by(CounDist, tpcondition) |>
+  summarize(category_count = n())
+
+ggplot(nyc_df_bargraph, aes(x = tpcondition, y = category_count, fill = tpcondition)) +
+  geom_col() +
+  facet_wrap(~ CounDist,scales = "free_y") +
+  labs(
+    title = "Tree Condition Counts by NYC Council District",
+    x = "Tree Condition",
+    y = "Count"
+  ) +
+  theme_bw() +
+  theme(
+    axis.text.x = element_blank(),
+    axis.ticks.x = element_blank(),
+    text = element_text(size = 7),          # GLOBAL SMALLER FONT
+    strip.text = element_text(size = 5),    # FACET LABELS SMALLER
+    legend.text = element_text(size = 5),
+    legend.title = element_text(size = 7)
+  ) +
+scale_fill_manual(
+  name = "Condition",
+  values = c(
+    "Critical" = "red",
+    "Dead" = "tomato",
+    "Excellent" = "#39FF14",
+    "Fair" = "forestgreen",
+    "Good" = "yellow",
+    "Poor" = "orange",
+    "Unknown" = "gray"
+  ),
+  labels = c(
+    "Critical" = "Critical",
+    "Dead" = "Dead",
+    "Excellent" = "Excellent",
+    "Fair" = "Fair",
+    "Good" = "Good",
+    "Poor" = "Poor",
+    "Unknown" = "Unknown"
+  )
+)
+```
+An aerial view of our tree canopy shows a healthy spread of fair, good, excellent trees with minimal scattering of dead and in critical condition trees. 
+```{r}
+#| code-fold: true
+#| code-summary: "Show the code"
+cd5 <- nyc_trees_df |>
+  filter(CounDist == 5)
+
+cd5_point <- left_join(cd5, tree_sf_df, by = c("objectid", "dbh", "tpstructure", "tpcondition", "plantingspaceglobalid", "globalid", "genusspecies", "createddate", "updateddate", "riskrating", "riskratingdate", "planteddate", "stumpdiameter"))
+
+library(ggplot2)
+
+ggplot() +
+  geom_sf(data = cd5_point, aes(geometry = geometry.x), color = "black") +
+  geom_sf(data = cd5_point, aes(geometry = geometry.y, color = tpcondition),
+          size = 0.5, alpha=0.3) +
+  scale_color_manual(values = c(
+    "Critical" = "red",
+    "Dead" = "tomato",
+    "Excellent" = "#39FF14",
+    "Fair" = "forestgreen",
+    "Good" = "yellow",
+    "Poor" = "orange",
+    "Unknown" = "gray"
+  )) +
+  theme_minimal()
+```
+
+A closer quantitative assessment was conducted to compare the ratios by district of poor to acceptable tree conditions. Where poor conditions include dead and critical trees, while acceptable trees include fair, good, and excellent trees. For the purpose of this assessment, tree conditions labeled as "unknown" were neglected. A higher ratio indicates that a district requires more support to tend to dead and critical trees. District 5 ranks 18th out of 51 for the highest ratio, putting us in the 66th percentile, which we plan to improve upon. 
+```{r, echo=TRUE, results='hide', message=FALSE}
+#| code-fold: true
+#| code-summary: "Show the code"
+
+library(dplyr)
+
+ratio <- nyc_trees_df |>
+  group_by(CounDist) |>
+  summarise(
+    bad_count = sum(tpcondition %in% c("Dead", "Critical"), na.rm = TRUE),
+    good_count = sum(tpcondition %in% c("Fair", "Good", "Excellent"), na.rm = TRUE),
+    ratio = bad_count / good_count,
+    .groups = "drop"
+  ) |>
+  arrange(desc(ratio))
+
+```
+<br><br>
+<center><h3>Poor to Adequate Tree Condition Ratio by Council District</h3></center>
+```{r}
+#| code-fold: true
+#| code-summary: "Show the code"
+kable(ratio) |>
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = FALSE) |>
+  scroll_box(height = "400px") |>
+  row_spec(which(ratio$CounDist == 5), background = "forestgreen", color = "white")
+```
+
+### Issue: 
+Our main concern is that we are ranking the lowest in tree diversity, with only 198 unique tree species. Coming in close were our neighbors in Districts 4 and 6, with 200 and 220 unique tree species, respectively. In contrast, District 13, with the highest of 392 unique tree species, nearly doubles our count.
+```{r, echo=TRUE, results='hide', message=FALSE}
+#| code-fold: true
+#| code-summary: "Show the code"
+
+#COUNCIL DISTRICT 5 HAS THE LEAST DIVERSITY IN TREE SPECIES  
+tree_diversity <- nyc_trees_df |> 
+   group_by(CounDist) |> 
+   summarize(number_of_species = n_distinct(genusspecies)) |> 
+   arrange(number_of_species) 
+```
+<br><br>
+<center><h3>Tree Diversity by Council District</h3></center>
+```{r}
+#| code-fold: true
+#| code-summary: "Show the code"
+kable(tree_diversity) |>
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = FALSE) |>
+  scroll_box(height = "400px") |>
+  row_spec(which(tree_diversity$CounDist == 5), background = "tomato", color = "black")
+```
+### Proposal & Methodology: 
+To address our two main issues, we will assess trees in poor condition to determine which ones are salvageable and which must be removed. In replacement, new tree species will be planted to lower our  poor to adequate tree condition ratio and increase our tree diversity. We'll also be taking volunteers to bring our vision to life, so join us to make District 5 greener!
+
+| Pros | Setbacks |
+| :------- | :------: | 
+| • An increase in biodiversity makes the environment less susceptible to diseases | • Costly reparations |
+| • Visual appeal of removing dead trees | • Timely procedure | 
+| • Improved air quality | • Pest control |
+
+
+
+
