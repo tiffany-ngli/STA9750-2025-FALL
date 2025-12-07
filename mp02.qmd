@@ -813,7 +813,7 @@ ggplot(yimby01, aes(x = housing_supply_index_scaled,
   )
 ```
 <center><h3>Count of YIMBY vs NIMBY Cities Within States</h3></center>
-The results indicate California the state with the most NIMBY cities while Pennsylvania with the most YIMBY cities. Notably, there are full NIMBY states with zero YIMBY cities including Conneticut, Illinois, New Hampshire, Rhode Island, and West Virginia. 
+The results indicate California the state with the most NIMBY cities while Florida with the most YIMBY cities. Notably, there are full NIMBY states with zero YIMBY cities including Conneticut, Illinois, New Hampshire, Rhode Island, and West Virginia. 
 ```{r}
 #| code-fold: true
 #| code-summary: "Show the code"
@@ -833,7 +833,7 @@ states_nimby_yimby <- yimby01 |>
             yimby_cities = sum(classification == "YIMBY")) 
 
 max_nimby_row <- which(states_nimby_yimby$nimby_cities == max(states_nimby_yimby$nimby_cities, na.rm = TRUE))
-max_yimby_row <- which(states_nimby_yimby$nimby_cities == max(states_nimby_yimby$yimby_cities, na.rm = TRUE))
+max_yimby_row <- which(states_nimby_yimby$yimby_cities == max(states_nimby_yimby$yimby_cities, na.rm = TRUE))
 
 states_nimby_yimby |>
   kable() |>

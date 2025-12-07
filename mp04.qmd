@@ -1,0 +1,778 @@
+---
+title: "Mini-Project #04: Just the Fact(-Check)s, Ma'am!"
+---
+![](https://cordis.europa.eu/docs/news/images/2023-11/447911.jpg)
+
+# Introduction 
+Economic and job market topics are often highly polarized, especially when tied to politics? But what do the actual numbers reveal? In this analysis, we unveil what the data has to say, and if they are in agreement with various claims made by politicians. To accomplish this, both exploratory and statistical methods will be implemented as we examine payroll trends, revision and other calculated statistics as a fact check. 
+
+# TASK 1: DOWNLOAD CES TOTAL NONFARM PAYROLL 
+Retrieved from the Bureau of Labor Statistics (BLS), the following data reports the total nonfarm, seasonally adjusted employees in thousands. 
+
+* Total nonfarm encompasses the traditional work force, excluding farm, private household, self-employed, and unpaid family workers.
+* Seasonally adjusted removes seasonal patterns such as holiday hiring, summer jobs, and back-to-school employment.
+* All values are recorded in thousands; after accounting for this scaling, so the total employment counts are in millions. (e.g., 88,808 means 88,808 * 1,000 = 80,808,000 employees for 1979-01-01)
+```{r, echo=TRUE, results='hide', message=FALSE, warning=FALSE}
+#| code-fold: true
+#| code-summary: "Show the code"
+
+library(httr2)
+library(rvest)
+library(dplyr)
+library(tidyr)
+library(lubridate)
+library(kableExtra)
+library(ggplot2)
+library(scales)
+
+#FORMS REQUEST STARTING AT FROM YEAR 1979 TO 2025
+req <- request("https://data.bls.gov/pdq/SurveyOutputServlet") |>
+  req_method("POST") |>
+  req_body_form(
+    survey = "ln",
+    series_id = "CES0000000001",
+    from_year = "1979",
+    to_year = "2025",
+  )
+
+#PERFORMS REQUEST
+resp <- req_perform(req)
+
+#PARSES THROUGH HTML
+html <- resp_body_html(resp)
+
+#EXTRACTS TABLE
+ces_total_nonfarm_payroll <- html |>
+  html_element("#table0") |>  
+  html_table()
+
+head(ces_total_nonfarm_payroll)
+
+#REFORMATTING AND CLEANING DATA
+ces_total_nonfarm_payroll <- ces_total_nonfarm_payroll |>
+  pivot_longer(
+    cols = Jan:Dec,
+    names_to = "Month",
+    values_to = "level"
+  ) |> #PIVOTS TABLE SO THE MONTHS ARE A COLUMN
+  mutate(Month = match(Month, month.abb)) |> #CHANGES ABBREVIATIONS TO NUMERIC
+  mutate(date = make_date(year = Year, month = Month, day = 1)) |>
+  select(date, level) |>
+  mutate(date = as.Date(date),
+         level = as.numeric(level)) |>
+  drop_na()
+```
+
+```{r}
+#| code-fold: true
+#| code-summary: "Show the code"
+kable(ces_total_nonfarm_payroll) |>
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = FALSE) |>
+  scroll_box(height = "400px")
+```
+## Nonfarm Payroll Continuously Increases Throughout the Years with a Minor Hiccup in 2020
+```{r, echo=TRUE, results='hide', message=FALSE, warning=FALSE}
+#| code-fold: true
+#| code-summary: "Show the code"
+
+ggplot(ces_total_nonfarm_payroll, aes(x = date, y = level)) +
+  geom_line(color = "steelblue", size = 1) +  # line chart
+  labs(
+    title = "Total Nonfarm Payroll Over Time",
+    x = "Year",
+    y = "Payroll Level",
+    caption = "Source: BLS CES data"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(size = 16, face = "bold", hjust = 0.5)
+  )
+```
+It's safe to say that over the past 45 years, there has been a steady increase in nonfarm employees. Although there was an alarming drop in 2020, but has since steadily made a comeback.
+
+# TASK 2: DOWNLOAD CES REVISIONS TABLES
+To better understand and accurately measure labor dynamics, the initial and final estimates of nonfarm employment were extracted from BLS.
+
+* Original refers to the estimated number of jobs in the initial quarter
+* Final refers to the reported number of jobs in the last quarter. 
+* Revision is calculated by taking the difference between the original and final values.
+Similar to the previous data table, the recorded values are in thousands. Therefore, a revision value of -82 indicates the original estimate overstated payroll employment by 82,000 jobs. While a positive revision indicates the initial estimates understated payroll employment, meaning more people were employed than anticipated. 
+
+```{r, echo=TRUE, results='hide', message=FALSE}
+#| code-fold: true
+#| code-summary: "Show the code"
+
+resp <- request("https://www.bls.gov/web/empsit/cesnaicsrev.htm") |> 
+            req_headers(`User-Agent` = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:143.0) Gecko/20100101 Firefox/143.0") |> #REMEDIES 403 ERROR
+            req_error(is_error = \(resp) FALSE) |>
+            req_perform()
+
+# PARSES THROUGH HTML
+html <- resp_body_html(resp)
+
+# FUNCTION THAT EXTRACTS DATA FROM DESIRED YEAR
+download_ces_revision <- function(year) {
+  
+  ces <-html |>
+    html_element(paste0("table#", as.character(year))) |> #AGGREGATES YEAR TO ELEMENT TO LOCATE THE TABLE FOR THAT YEAR
+    html_table()
+  
+  # ENSURES ALL COLUMN NAMES ARE DIFFERENT 
+  names(ces) <- make.unique(names(ces))
+  
+  # STEPS TO CLEAN DATA 
+  ces <- ces |>
+    slice(3:(n()-2)) |> #REMOVES FIRST 2 ROWS & LAST 2 ROWS
+    select(c("Month", "Year", "Seasonally adjusted", "Seasonally adjusted.2", "Seasonally adjusted.5")) |> #SELECTS RELEVANT COLUMNS
+    filter(Year == year) |>
+    mutate(Month = substr(Month, 1,3)) |> #REMOVES THE PERIOD 
+    mutate(Month = match(Month, month.abb)) |> #MONTH TO NUMERIC
+    mutate(date = make_date(year = Year, month = Month, day = 1)) |>
+    select(
+      date = 6, 
+      original = 3,
+      final = 4,
+      revision = 5
+    ) |> # RENAMES RELEVANT COLUMNS, IN SPECIFIED ORDER
+    drop_na()
+  
+  return(ces)
+  }
+
+years <- c(1979:2025)  # YEARS TO RETRIEVE
+ces_list <- list()  # EMPTY LIST TO STORE DATA
+
+# FOR LOOP TO GET DATA FROM 1979 TO 2025
+for (i in seq_along(years)) {
+  year <- years[i]
+  
+  # CALLS FUNCTION ON SPECIFIED
+  ces <- download_ces_revision(year)
+  
+  ces_list[[i]] <- ces # STORES EACH YEAR'S DATA INTO THE LIST
+}
+
+# COMBINES ALL YEARS INTO ONE DATAFRAME
+all_ces <- bind_rows(ces_list)
+```
+
+```{r}
+#| code-fold: true
+#| code-summary: "Show the code"
+
+kable(all_ces) |>
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = FALSE) |>
+  scroll_box(height = "400px")
+```
+
+# TASK 3: DATA EXPLORATION AND VISUALIZATION
+The following output shows the descriptive summary statistics of the joined data tables. Where we can identify 1979-01-01 as the earliest recorded date, and 2025-12-01 as the most recent. To reiterate, all revision were calculated by taking the difference between original and final. The largest positive revision was 437 on 2021-11-01, while the largest negative revision was -672 on 2020-03-01. 
+```{r, warning=FALSE}
+#| code-fold: true
+#| code-summary: "Show the code"
+
+#JOIN TABLES TOGETHER
+joined_ces <- ces_total_nonfarm_payroll |>
+  left_join(all_ces, by="date") |>
+  mutate(date = as.Date(date),
+         level = as.numeric(level),
+         original = as.numeric(original),
+         final = as.numeric(final),
+         revision = as.numeric(revision))
+
+summary(joined_ces)
+```
+## Explaining Mean Revisions in the Context of Economic History
+Analyzing the annual mean revision, **2008** recorded the largest negative revision, with mean of **-73.08**. The negative revision shows that the first estimates overstated job growth, and the final data reported fewer jobs than initially reported. These results often, but not always, are signs of an economic slowdown or recession. Consequently, this aligns with the 2008 financial crisis that saw sharp monthly declines in payroll employment. 
+
+In contrast, **2021** recorded the largest positive mean revision of **158.67**, reflecting an economic recovery in employment. A multitude of factors can account for these results. For starters, the economic reopening post-COVID led to strong demand for labor. Extensive layoffs during the COVID-19 pandemic resulted in an abundant labor supply. Hence, the alignment of labor supply and demand contributed to the positive revision. Additional government support through unemployment benefits and stimulus checks, helped bring up the mean revision from 2020.
+
+It’s important to note that in **2003**, the BLS redesigned the Current Employment Statistics (CES) survey, causing missing values for that year.
+```{r, warning=FALSE}
+#| code-fold: true
+#| code-summary: "Show the code"
+#1. What and when were the largest revisions (positive and negative) in CES history?
+yearly_mean_revisions <- joined_ces |>
+  group_by(year = year(date)) |>
+  mutate(revision = as.numeric(revision)) |>
+  summarize(mean_revision = mean(revision))
+
+min_row <- yearly_mean_revisions[which.min(yearly_mean_revisions$mean_revision), na.rm=TRUE]
+max_row <- yearly_mean_revisions[which.max(yearly_mean_revisions$mean_revision), na.rm=TRUE]
+extremes <- rbind(min_row, max_row)
+
+ggplot(yearly_mean_revisions, aes(x = year, y = mean_revision)) +
+  geom_line(color = "steelblue", size = 1) + 
+  geom_point(data = extremes, aes(x = year, y = mean_revision),
+             color = "red", size = 3) +
+  geom_hline(yintercept = 0, linetype="dashed", color="black")+
+  labs(
+    title = "Mean Revisions (1979-2025)", 
+    x = "Year", 
+    y = "Mean Revision", 
+    caption = "Source: BLS CES data") + 
+  scale_x_continuous(breaks = yearly_mean_revisions$year) +  # SHOW ALL YEARS
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 90, hjust = 1, size=7),
+    plot.title = element_text(size = 16, face = "bold", hjust=0.5))  # RECONFIGURES LABELS
+```
+
+## The Positive Outweights the Negative
+Over the past 45 years, the positive revisions have been more prevalent than negative ones. It correlates to a positive sign, indicating the labor market has generally performed stronger than initial estimation. In general, a positive revision points to a direction of higher employment and reflects a strong labor market; however, other economic factors must be taken into account to access overall economic health.
+```{r}
+#| code-fold: true
+#| code-summary: "Show the code"
+
+#2. What fraction of CES revisions are positive in each year? In each decade?
+
+positive_negative_revisions <- joined_ces |>
+  summarize(
+    positive = sum(revision > 0, na.rm = TRUE)/sum(!is.na(revision)),
+    negative = sum(revision < 0, na.rm = TRUE)/sum(!is.na(revision))
+  ) |>
+  pivot_longer(cols = c(positive, negative), names_to = "revision_type", values_to = "fraction")
+
+ggplot(positive_negative_revisions, aes(x = "Revision Type", y = fraction, fill = revision_type)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  geom_text(aes(label = percent(fraction, accuracy = 0.1)), 
+            position = position_dodge(width = 0.9),
+            vjust = -0.5, size = 3) +
+  scale_fill_manual(
+    name = "Revision Category",
+    values = c("#ef476f", "#06d6a0"),
+    labels = c("Negative", "Positive")
+  ) +
+  labs(
+    title = "Negative vs Positive Revision Fractions",
+    x = "",
+    y = "Fraction Value",
+    caption = "Source: BLS CES data"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(size = 16, face = "bold", hjust = 0.5)
+  )
+```
+
+## Revisions Further Highlight Major Economic Events
+Plotting revisions over the past 45 years, the gray sections identify the time periods when the labor market was the most volatile. Namely, the oil crisis in **1979** led to an economic recession. Later, following the Great Recession of **2008**, and most recently, in **2020**, the global shutdown due to COVID-19. As opposed to the non-shaded regions, they present a more stable and predictable job market. 
+```{r, echo=TRUE, results='hide', message=FALSE, warning=FALSE}
+#| code-fold: true
+#| code-summary: "Show the code"
+
+#3. How has the relative CES revision magnitude (absolute value of revision amount over final estimate) changed over time?
+revision_magnitude <- joined_ces |>
+  mutate(magnitude = abs(as.numeric(revision)),
+         revision = as.numeric(revision)) 
+
+ggplot(revision_magnitude, aes(x = date)) + 
+  # first shaded region
+  geom_rect(aes(
+    xmin = as.Date("1979-01-01"),
+    xmax = as.Date("1984-03-01"),
+    ymin = -Inf,
+    ymax = Inf
+  ), 
+  fill = "lightgray", alpha = 0.3, inherit.aes = FALSE) +
+
+  # second shaded region
+  geom_rect(aes(
+    xmin = as.Date("2008-06-01"),
+    xmax = as.Date("2009-03-01"),
+    ymin = -Inf,
+    ymax = Inf
+  ), 
+  fill = "lightgray", alpha = 0.3, inherit.aes = FALSE) +
+  geom_rect(aes(
+    xmin = as.Date("2020-01-01"),
+    xmax = as.Date("2022-03-01"),
+    ymin = -Inf,
+    ymax = Inf
+  ), 
+  fill = "lightgray", alpha = 0.3, inherit.aes = FALSE) +
+  # main line
+  geom_line(aes(y = revision), color = "steelblue") + 
+  geom_hline(yintercept = 0, linetype = "dashed", color = "black") +
+
+  # labels and theme
+  labs(title = "Revision Over Time", 
+       x = "Year", 
+       y = "Revision",
+      caption = "Source: BLS CES data") + 
+  theme_minimal() +
+  theme(
+    plot.title = element_text(size = 16, face = "bold", hjust = 0.5)
+  )
+```
+# Analyzing Magnitude Identifies 2020 as a Clear Outlier
+To illustrate the size of change over time, the magnitude of revisions was plotted, highlighting 2020 as the year with the largest difference in a short time span. Notably, a large majority of revisions pre-COVID fell below 400, until it peaked to 600.
+```{r, warning=FALSE}
+#| code-fold: true
+#| code-summary: "Show the code"
+
+ggplot(revision_magnitude, aes(x=date, y = magnitude)) +
+  geom_line(color="steelblue") +
+  labs(
+    title = "Revision Magnitude Over Time",
+    x = "Year",
+    y = "Absolute Value of Revision",
+    caption = "Source: BLS CES data"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(size = 16, face = "bold", hjust = 0.5)
+  )
+```
+# Spikes in Revision Percentage Further Reflect Labor Market Shocks
+Revision percentage trends follow striking similarities to revision magnitude, as its also simulated by recessions and shocks events previously discussed. The calculated percentages are relatively small. As a guide for interpretation 0.05 points to a small revision while 0.2 indicates a larger revision. Adding the threshold line, we could once again appoint the 1980s and the 2020s as key outliers.
+```{r, warning=FALSE}
+#| code-fold: true
+#| code-summary: "Show the code"
+
+#4. How has the absolute CES revision as a percentage of overall employment level changed over time?
+percent_employment <- revision_magnitude %>%
+  mutate(
+    "revision percentage"= abs(revision) / level * 100
+  )
+
+ggplot(percent_employment, aes(x = date, y = `revision percentage`)) +
+  geom_line(color = "steelblue") +
+  labs(
+    title = "Absolute CES Revision as % of Employment Over Time",
+    x = "Date",
+    y = "Revision (% of Employment)",
+    caption = "Source: BLS CES data"
+  ) +
+  theme_minimal() +
+  ylim(0, 0.5) +  # zoom in from 0% to 0.05%
+  theme(
+    plot.title = element_text(size = 16, face = "bold", hjust = 0.5) 
+  ) + 
+  geom_hline(yintercept = 0.2, linetype = "dashed", color = "red") 
+```
+
+Assessing the calculated revision percentages, there were multiple times in which the labor market was accurately predicted, with 0% revision, highlighted in red. To no surprise, 2020-03-01 turned out to have the highest revision percentage of 0.44%, highlighted in green.
+```{r}
+#| code-fold: true
+#| code-summary: "Show the code"
+
+max_percent_employment <- which(percent_employment$"revision percentage" == max(percent_employment$"revision percentage", na.rm = TRUE))
+min_percent_employment <- which(percent_employment$"revision percentage" == min(percent_employment$"revision percentage", na.rm = TRUE))
+
+kable(percent_employment) |>
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = FALSE) |>
+  scroll_box(height = "400px") |> 
+  row_spec(max_percent_employment, background = "#06d6a0", color="white") |>
+  row_spec(min_percent_employment, background = "#ef476f", color="white")
+```
+
+## Job Market Cycles Determine February as the Most Accurate Month and September as the Least Accurate Month
+By observing the monthly trends over the past 45 years, it is evident that September presents the largest absolute mean revision of 80.2, in red. Coinciding with the phenomenon, September Surge. It gets its name from the fluctuations that occur from seasonal employment, marking the end of summer jobs, but also back-to-school hiring, making initial estimates harder to predict. Mirroring that is the cool-down that occurs at the beginning of the year, where we identify February as the month with the lowest absolute mean revision, in green. Returning from the holidays, there are fewer hiring opportunities due to wait times for budget approvals and termination of seasonal contract employment, with minor and direct changes, initial estimations are recorded more accurately.
+```{r, warning=FALSE}
+#| code-fold: true
+#| code-summary: "Show the code"
+#5. Are there any months that systematically have larger or smaller CES revisions?
+
+monthly_revisions <- revision_magnitude |>
+  mutate(month = month(date, label = TRUE)) |>  # Jan, Feb, etc.
+  group_by(month) %>%
+  summarize(
+    "mean revision" = mean(revision, na.rm = TRUE),
+    "mean of absolute revision" = mean(abs(revision), na.rm = TRUE)
+  ) |>
+  mutate(
+    highlight = case_when(
+      `mean of absolute revision` == max(`mean of absolute revision`) ~ "Max",
+      `mean of absolute revision` == min(`mean of absolute revision`) ~ "Min",
+      TRUE ~ "Other"
+    )
+  )
+
+ggplot(monthly_revisions, aes(x = month, y = `mean of absolute revision`, fill = highlight)) +
+  geom_col() +
+  geom_text(aes(label = round(`mean of absolute revision`, 0.75)), vjust = -0.5) +
+  scale_fill_manual(values = c("Max" = "#ef476f", "Min" = "#06d6a0", "Other" = "grey")) +
+  labs(
+    title = "Average CES Revision by Month",
+    x = "Month",
+    y = "Mean of Absolute Revision",
+    caption = "Source: BLS CES data"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(size = 16, face = "bold", hjust = 0.5),
+    legend.position = "none"
+  )
+```
+
+## Average Revisions Indicate CES revisions Have Generally Been Accurate and Reliable
+Calculating the average of absolute revisions show, on average, CES misestimates payroll by roughly 56,720 thousand. However, compared to the millions of reported payroll, these misjudgements are minor, resulting in an average revision percentage of 0.048%.
+```{r, warning=FALSE}
+#| code-fold: true
+#| code-summary: "Show the code"
+
+#6. How large is the average CES revision in absolute terms? In terms of percent of that month's CES level?
+
+revision_summary <- joined_ces |>
+  mutate(
+    abs_revision = abs(revision),
+    revision_pct = abs_revision / level * 100
+  ) |>
+  summarize(
+    "Average Absolute Revision" = mean(abs_revision, na.rm = TRUE),
+    "Average Revision Percentage" = mean(revision_pct, na.rm = TRUE)
+  )
+
+kable(revision_summary) |>
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = FALSE) |>
+  scroll_box(height = "100px") 
+```
+
+# TASK 4: STATISTICAL INFERENCE 
+Observing averages alone, there has been an increase in negative revisions. Within the past two decades, the fraction of negative revisions has grew by 0.06%. Based on previous discussions, these results most likely transpired from the events of COVID-19. However, how statistically significant is this difference?
+```{r,warning=FALSE}
+#| code-fold: true
+#| code-summary: "Show the code"
+
+#1. Has the fraction of negative revisions increased post-2000?
+
+negative_fraction_per_year <- joined_ces |>
+  mutate(year = year(date)) |>
+  group_by(year) |>
+  summarize(
+    fraction_negative = sum(revision < 0, na.rm = TRUE) / sum(!is.na(revision))
+  )
+
+pre_post_comparison <- negative_fraction_per_year |>
+  mutate(period = ifelse(year >= 2000, "post 2000", "pre 2000")) |>
+  group_by(period) |>
+  summarize(avg_fraction_negative = mean(fraction_negative, na.rm = TRUE)) |>
+  mutate(period = factor(period, levels = c("pre 2000", "post 2000")))
+
+ggplot(pre_post_comparison, aes(x = period, y = avg_fraction_negative, fill = period)) +
+  geom_col() +
+  geom_text(aes(label = round(avg_fraction_negative, 2)),  # label values
+            vjust = -0.5,   # position above the bar
+            size = 3) +     # text size
+  scale_fill_manual(values = c("post 2000" = "tomato", "pre 2000" = "tomato")) +
+  labs(title = "Average Fraction of Negative Revisions: Pre vs Post 2000",
+       x = "Period",
+       y = "Average Fraction Negative",
+       caption = "Source: BLS CES data") +
+  theme_minimal() +
+  theme(legend.position = "none",
+        plot.title = element_text(size = 16, face = "bold", hjust = 0.5))
+```
+## That's a Negative...
+Upon conducting a t-test for further statistical analysis, a p-value of 0.3289 was obtained. Since the p-value is greater than 0.05, we fail to reject the null hypothesis. In other words, there is **no statistically significant difference between the fraction of negative revisions pre-2000 versus post-2000.** These results don't entirely go against the bar graphs seen above, as were are not saying there is no difference. Instead it's saying the difference is so small it is negligent. As a result, the minute difference is not strong enough to conclude that there was a higher average of negative fractions post 2000. 
+```{r,warning=FALSE}
+#| code-fold: true
+#| code-summary: "Show the code"
+
+negative_revisions <- joined_ces |>
+  mutate(
+    negative = revision < 0,
+    year = year(date)
+  )
+
+pre_2000 <- negative_revisions |>
+  filter(year < 2000)
+
+post_2000 <- negative_revisions |>
+  filter(year >= 2000)
+
+pre_values <- as.numeric(pre_2000$negative)
+post_values <- as.numeric(post_2000$negative)
+
+t_test_negative_revision <- t.test(pre_values, post_values)
+print(t_test_negative_revision)
+```
+
+## Prevelance of the Post-COVID Effects
+Throughout our exploratory analysis, 2020 repeated appeared as a common outlier. Now we are putting to the test how apparent its effects were by comparing the average revision pre 2020 and post 2020. The graph below indicates pre 2020 with an average revision of 12.84 while post 2020 averaged to -4.45. Indicating post 2020, there has been an overestimation of employment. Discerning the magnitude, post 2020 estimations have been more accurate. Once again, let's see if this difference is statistically significant.
+```{r,warning=FALSE}
+#| code-fold: true
+#| code-summary: "Show the code"
+
+#4. Has the average revision increased post-2020?
+avg_revision_per_year <- joined_ces |>
+  mutate(year = year(date)) |>
+  group_by(year) |>
+  summarize(
+    average_revision = mean(revision)
+  )
+
+pre_post_avg_comparison <- avg_revision_per_year |>
+  mutate(period = ifelse(year >= 2020, "post 2020", "pre 2020")) |>
+  group_by(period) |>
+  summarize(average_revision = mean(average_revision, na.rm = TRUE)) |>
+  mutate(period = factor(period, levels = c("pre 2020", "post 2020")))
+
+
+ggplot(pre_post_avg_comparison, aes(x = period, y = average_revision, fill = period)) +
+  geom_col() +
+  geom_text(aes(label = round(average_revision, 2)),
+            vjust = -0.5) +
+  scale_fill_manual(values = c("pre 2020" = "steelblue", "post 2020" = "tomato")) +
+  labs(title = "Average CES Revision: Pre vs Post 2020",
+       x = "Period",
+       y = "Average Revision",
+       caption = "Source: BLS CES data") +
+  theme_minimal() +
+  theme(legend.position = "none",
+        plot.title = element_text(size = 16, face = "bold", hjust = 0.5))
+```
+
+## Another Negative
+The t-test determines a p-value of 0.6351. Similar to the test before,  the p-value is greater than 0.05, so once again, we fail to reject the null hypothesis. Therefore, the difference is not statistically significant between the average revision pre 2020 and post 2020. Although it is important to note that there are far more observations pre 2020 than post 2020. The lack of observations post 2020 causes more variations.
+```{r}
+#| code-fold: true
+#| code-summary: "Show the code"
+pre_values_avg <- avg_revision_per_year$average_revision[avg_revision_per_year$year < 2020]
+post_values_avg <- avg_revision_per_year$average_revision[avg_revision_per_year$year >= 2020]
+
+# Run the t-test
+t_test_result <- t.test(pre_values_avg, post_values_avg)
+t_test_result
+```
+
+# TASK 5: FACT CHECKS OF CLAIMS ABOUT BLS
+[CLAIM 1:](https://www.theguardian.com/us-news/live/2025/aug/01/donald-trump-trade-tariffs-latest-us-politics-live-news-updates)
+"'Days before the election, she came out with these beautiful numbers for Kamala, I guess Biden-Kamala, and she came out with these beautiful numbers trying to get somebody else elected,' Trump said, entirely misrepresenting the jobs report released on 1 November 2024, four days before the election, which in fact showed the US added just 12,000 over the previous month."
+<center>[![YouTube Video](https://img.youtube.com/vi/LEsYJxh8cGI/0.jpg)](https://youtu.be/LEsYJxh8cGI?t=8)</center>
+
+```{r, echo=TRUE, results='hide', message=FALSE, warning=FALSE}
+#| code-fold: true
+#| code-summary: "Show the code"
+library(tidyverse)
+presidents_party <- tidyr::expand_grid(year=1979:2025, 
+                                       month = month.name, 
+                                       president = NA, 
+                                       party = NA) |> 
+    mutate(president = case_when(
+        (month == "January")  & (year == 1979) ~ "Carter",
+        # BLS jobs reports come out on the first Friday, so February
+        # is the first time a new president 'owns' the jobs number 
+        (month == "February") & (year == 1981) ~ "Reagan",
+        (month == "February") & (year == 1989) ~ "Bush 41",
+        (month == "February") & (year == 1993) ~ "Clinton",
+        (month == "February") & (year == 2001) ~ "Bush 43",
+        (month == "February") & (year == 2009) ~ "Obama",
+        (month == "February") & (year == 2017) ~ "Trump I",
+        (month == "February") & (year == 2021) ~ "Biden",
+        (month == "February") & (year == 2025) ~ "Trump II",
+    )) |>
+    tidyr::fill(president) |>
+    mutate(party = if_else(president %in% c("Carter", "Clinton", "Obama", "Biden"), 
+                           "D", 
+                           "R")) 
+
+claim1 <- presidents_party |>
+  filter(president == c("Biden", "Trump II")) 
+
+
+claim1_percentage_employment <- percent_employment |>
+  mutate(month = month(date, label = TRUE, abbr = FALSE),
+         year = year(date))
+
+claim1 <- claim1 |>
+  left_join(claim1_percentage_employment, by=c("year", "month"))
+
+president_periods <- claim1 |>
+  group_by(president) %>%
+  summarize(start_date = min(date, na.rm = TRUE),
+            end_date   = max(date, na.rm = TRUE))
+
+ggplot(claim1, aes(x = date, y = `revision percentage`)) +
+  # Shade presidential periods
+  geom_rect(data = president_periods,
+            aes(xmin = start_date, xmax = end_date, ymin = -Inf, ymax = Inf, fill = president),
+            alpha = 0.1, inherit.aes = FALSE) +
+  
+  # Line for revisions
+  geom_line(aes(color = party), size = 1) +
+  
+  # Points for each observation
+  geom_point(aes(color = party), size = 2) +
+  
+  # Highlight November 2024
+  geom_point(data = claim1 %>% filter(date == as.Date("2024-11-01")),
+             aes(x = date, y = `revision percentage`),
+             color = "orange", size = 2) +
+  geom_text(data = claim1 %>% filter(date == as.Date("2024-11-01")),
+            aes(x = date, y = `revision percentage`, label = "Nov 2024"),
+            vjust = -1.5, color = "orange", fontface = "bold") +
+  
+  # Horizontal line at zero
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  
+  # Labels and theme
+  labs(title = "CES Revision Percentages Over Time by Presidential Party",
+       x = "Date",
+       y = "Revision Percentage",
+       fill = "President",
+       color = "Party",
+      caption = "Source: BLS CES data") +
+  scale_color_manual(values = c("D" = "blue", "R" = "red")) +
+  scale_fill_manual(values = c("Biden" = "lightblue", "Trump II" = "pink")) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(size = 16, face = "bold", hjust = 0.5),
+    legend.position = "top"
+  )
+
+```
+
+The first t-test we'll be conducting observes if there is a substantial difference between the reported revision percentage in November 2024 as opposed to all previous Novembers. We'll specifically do a one-sample t-test since we are comparing a singular observation, that of November 2024, to the mean of all previous November observations. 
+```{r, warning=FALSE}
+#| code-fold: true
+#| code-summary: "Show the code"
+
+# Filter for all previous Novembers (exclude November 2024)
+percent_employment <- percent_employment |>
+    mutate(month = month(date, label = TRUE, abbr = FALSE),
+         year = year(date)) 
+
+historical_nov <- percent_employment %>%
+  filter(month == "November" & year < 2024) %>%
+  pull(`revision percentage`)
+
+# November 2024 revision percentage
+nov2024 <- percent_employment %>%
+  filter(year == 2024 & month == "November") %>%
+  pull(`revision percentage`)
+
+# One-sample t-test: test if Nov 2024 > historical mean
+t_test_result <- t.test(historical_nov, mu = nov2024, alternative = "less")
+t_test_result
+```
+The p-value is significantly larger than 0.05, so we fail to reject the null hypothesis; therefore, confirming that Trump's claims were, in fact, false. The revisions reported on November 1, 2024 didn't present major deviations from all previous November reporting. 
+```{r, warning=FALSE}
+#| code-fold: true
+#| code-summary: "Show the code"
+
+trump <- claim1 |>
+  filter(president == "Trump II") |>
+  mutate(
+    date = ymd(paste(year, month, "01"))
+  ) |>
+  select(date, president, level, revision, magnitude, `revision percentage`) 
+```
+
+Trump's first term dealt with the unprecedented events of COVID-19 that heavily impacted the job market. However, observing his current presidency, there has been a plateau in payroll. Looking further ahead, compared to the payroll under Biden's presidency, it appears to be underperforming compared to the previous years. Continue reading to the next claim, where we further explore the validity of these statements. 
+```{r, warning=FALSE}
+#| code-fold: true
+#| code-summary: "Show the code"
+trump_full_terms <- presidents_party |>
+  left_join(percent_employment, by = c("month","year")) |>
+  filter(str_detect(president, "Trump"))|>
+  mutate(term = ifelse(president == "Trump I", "Trump's First Term (2017-2021)", "Trump's Second Term (Present)"))
+
+ggplot(trump_full_terms, aes(x = date, y = level)) +
+  geom_line(color = "steelblue", size = 1) +
+  facet_wrap(~ term, scales = "free_x") +
+  labs(
+    title = "Total Nonfarm Payroll During Trump's Presidencies",
+    x = "Date",
+    y = "Payroll Level",
+    caption = "Source: BLS CES data"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(size = 16, face = "bold", hjust = 0.5)
+  )
+
+kable(trump_full_terms) |>
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = FALSE) |>
+  scroll_box(height = "450px")
+```
+
+<br><br>
+[CLAIM 2:](https://www.pbs.org/newshour/politics/watch-biden-says-hes-leaving-economy-stronger-than-ever-for-americans-as-his-term-nears-end)
+"'We've created jobs every single month I was in office,' Biden told reporters Friday, 10 days before. his administration ends. 'I believe the economy I'm leaving is the best in the world and stronger than ever for all Americans...'"
+
+Just from observing reported levels, Biden's claim presumed to be true. Indeed, every month there has been a modest increase in employment. With a steeper slope in the initial years of his presidency. To connect and answer the previous two claims, let's put to the test if the growth under Biden's administration out performed that of Trump's past and current term. 
+```{r, warning=FALSE}
+#| code-fold: true
+#| code-summary: "Show the code"
+biden <- claim1 |>
+  filter(president == "Biden")
+
+ggplot(biden, aes(x = date, y = level)) +
+  geom_line(color = "steelblue", size = 1) +  # line chart
+  labs(
+    title = "Total Nonfarm Payroll During Biden's Presidency",
+    x = "Year",
+    y = "Payroll Level",
+    caption = "Source: BLS CES data"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(size = 16, face = "bold", hjust = 0.5)
+  )
+```
+To compare the the job market growth under each president's term, the monthly change in level was calculated to conduct a t-test. 
+```{r, message=FALSE, warning=FALSE}
+#| code-fold: true
+#| code-summary: "Show the code"
+
+biden_v_trump <- bind_rows(biden, trump_full_terms)
+
+biden_v_trump_testing <- biden_v_trump |>
+  group_by(party) |>
+  mutate(`monthly change` = level - lag(level))
+
+biden_v_trump_table <- biden_v_trump_testing |>
+  mutate(date = ymd(paste(year, month, "01"))) |>
+  select(date, president, magnitude, `revision percentage`, `monthly change`) 
+
+kable(biden_v_trump_table) |>
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = FALSE) |>
+  scroll_box(height = "350px") 
+```
+<br>
+Although the means below direct that the average monthly payroll under Biden's presidency was higher than that of Trump's, the p-value indicates that this difference is not significant.  
+```{r, warning=FALSE}
+#| code-fold: true
+#| code-summary: "Show the code"
+
+#T TEST
+#NOTE: using party to discern the presidents is more efficient since Trump's terms are differentiated by Trump I and Trump II
+t.test(`monthly change` ~ party, data = biden_v_trump_testing, alternative = "greater")
+```
+For further testing, a linear regression model was conducted, with payroll level as the response variable and the interaction of time and president as the predictor variables. Statistically speaking, these results would give better interpretation because it separates the starting level and growth rate for a clearer indication of performance. Observing the first row, denoted by date, which observes Biden's term, confirms there was a significant increase in payroll of 9.944 thousand jobs per month, with a p-value of 2.03e-05. 
+
+Now evaluating Trump's payroll performance, we'll be looking at the third row, date:partyR, denoting the interaction between the two predictors. The slope is -6.632, meaning every month, collectively looking at his previous and current terms, there has been a decrease in payroll of 6.632 thousand jobs per month. The p-value also demonstrates statistical significance; therefore, confirming that under Trump's administration, payroll growth is underperforming relative to Biden's. 
+
+```{r, warning=FALSE}
+#| code-fold: true
+#| code-summary: "Show the code"
+
+#REGRESSION MODEL TEST
+model <- lm(level ~ date * party, data = biden_v_trump_testing)
+summary(model)
+```
+Plotting the regression models, we can visually see the difference in slope between Biden's term shown in blue and Trump's term shown in red. Additionally, once Trump regained presidency for his second term, we can identify the plateau in job growth. The points illustrate the payroll level for the record dates, while the solid lines represent the regression model that best fits those points. Due to the major fluctuations, shown by the red points under Trump's administrations, the regression model has higher variance, as depicted by the shaded gray area. While the blue points show a more defined positive slope, it also has smaller variance. 
+```{r, warning=FALSE}
+#| code-fold: true
+#| code-summary: "Show the code"
+
+ggplot(biden_v_trump_testing, aes(x = date, y = level, color = party)) +
+  geom_point(alpha = 0.5) +                  # raw data points
+  geom_smooth(method = "lm", se = TRUE, size = 0.5) +   # regression lines
+  scale_color_manual(values = c("D" = "blue", "R" = "red")) +  # manual colors
+  labs(
+    title = "Payroll Levels Over Time by Party",
+    x = "Date",
+    y = "Payroll Level",
+    color = "Party"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(size = 16, face = "bold", hjust = 0.5)
+  )
+```
+
+## Conclusion 
+It's important to not take everything you hear at face value and do further research of your own. Additionally, numbers may not always tell the full story, as we previously observed under multiple scenarios where some differences in value are simply not enough to conclude there is enough evidence to backup the claims. Of course, not every has the time for an extensive analysis about all the claims you run into, so a simple starting point is to read from credible sources and stay educated. Happy reading!
