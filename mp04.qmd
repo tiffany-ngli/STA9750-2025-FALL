@@ -24,6 +24,7 @@ library(lubridate)
 library(kableExtra)
 library(ggplot2)
 library(scales)
+library(tidyverse)
 
 #FORMS REQUEST STARTING AT FROM YEAR 1979 TO 2025
 req <- request("https://data.bls.gov/pdq/SurveyOutputServlet") |>
@@ -66,6 +67,7 @@ ces_total_nonfarm_payroll <- ces_total_nonfarm_payroll |>
 ```{r}
 #| code-fold: true
 #| code-summary: "Show the code"
+
 kable(ces_total_nonfarm_payroll) |>
   kable_styling(bootstrap_options = c("striped", "hover"), full_width = FALSE) |>
   scroll_box(height = "400px")
@@ -102,6 +104,7 @@ Similar to the previous data table, the recorded values are in thousands. Theref
 #| code-fold: true
 #| code-summary: "Show the code"
 
+#UPDATES URL
 resp <- request("https://www.bls.gov/web/empsit/cesnaicsrev.htm") |> 
             req_headers(`User-Agent` = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:143.0) Gecko/20100101 Firefox/143.0") |> #REMEDIES 403 ERROR
             req_error(is_error = \(resp) FALSE) |>
@@ -192,15 +195,19 @@ It’s important to note that in **2003**, the BLS redesigned the Current Employ
 #| code-fold: true
 #| code-summary: "Show the code"
 #1. What and when were the largest revisions (positive and negative) in CES history?
+
+#CALCULATE YEARLY REVISIONS BY GROUPING BY YEAR, THEN TAKING THE MEAN
 yearly_mean_revisions <- joined_ces |>
   group_by(year = year(date)) |>
   mutate(revision = as.numeric(revision)) |>
   summarize(mean_revision = mean(revision))
 
+#IDENTIFIES THE MIN AND MAX OF MEAN REVISIONS 
 min_row <- yearly_mean_revisions[which.min(yearly_mean_revisions$mean_revision), na.rm=TRUE]
 max_row <- yearly_mean_revisions[which.max(yearly_mean_revisions$mean_revision), na.rm=TRUE]
 extremes <- rbind(min_row, max_row)
 
+#GRAPH HIGHLIGHTS THE MIN AND MAX POINTS TO IDENTIFY THE YEARS IT OCCURRED IN 
 ggplot(yearly_mean_revisions, aes(x = year, y = mean_revision)) +
   geom_line(color = "steelblue", size = 1) + 
   geom_point(data = extremes, aes(x = year, y = mean_revision),
@@ -226,6 +233,7 @@ Over the past 45 years, the positive revisions have been more prevalent than neg
 
 #2. What fraction of CES revisions are positive in each year? In each decade?
 
+#SORT POSITIVE REVISIONS FROM NEGATIVE REVISIONS
 positive_negative_revisions <- joined_ces |>
   summarize(
     positive = sum(revision > 0, na.rm = TRUE)/sum(!is.na(revision)),
@@ -233,6 +241,7 @@ positive_negative_revisions <- joined_ces |>
   ) |>
   pivot_longer(cols = c(positive, negative), names_to = "revision_type", values_to = "fraction")
 
+#BAR GRAPH TO SHOW THE DIFFERENCE
 ggplot(positive_negative_revisions, aes(x = "Revision Type", y = fraction, fill = revision_type)) +
   geom_bar(stat = "identity", position = "dodge") +
   geom_text(aes(label = percent(fraction, accuracy = 0.1)), 
@@ -262,12 +271,15 @@ Plotting revisions over the past 45 years, the gray sections identify the time p
 #| code-summary: "Show the code"
 
 #3. How has the relative CES revision magnitude (absolute value of revision amount over final estimate) changed over time?
+
+#CALCULATE MAGNITUDE BY TAKING THE ABSOLUTE VALUE OF REVISIONS
 revision_magnitude <- joined_ces |>
   mutate(magnitude = abs(as.numeric(revision)),
          revision = as.numeric(revision)) 
 
+#HIGHLIGHTS IN GRAY THE PERIODS THAT SHOWED THE MOST FLUCTUATION
 ggplot(revision_magnitude, aes(x = date)) + 
-  # first shaded region
+  #FIRST SHADED REGION
   geom_rect(aes(
     xmin = as.Date("1979-01-01"),
     xmax = as.Date("1984-03-01"),
@@ -276,7 +288,7 @@ ggplot(revision_magnitude, aes(x = date)) +
   ), 
   fill = "lightgray", alpha = 0.3, inherit.aes = FALSE) +
 
-  # second shaded region
+  #SECOND SHADED REGION
   geom_rect(aes(
     xmin = as.Date("2008-06-01"),
     xmax = as.Date("2009-03-01"),
@@ -291,11 +303,11 @@ ggplot(revision_magnitude, aes(x = date)) +
     ymax = Inf
   ), 
   fill = "lightgray", alpha = 0.3, inherit.aes = FALSE) +
-  # main line
+  #MAIN. LINE
   geom_line(aes(y = revision), color = "steelblue") + 
   geom_hline(yintercept = 0, linetype = "dashed", color = "black") +
 
-  # labels and theme
+  #LABELS
   labs(title = "Revision Over Time", 
        x = "Year", 
        y = "Revision",
@@ -331,15 +343,18 @@ Revision percentage trends follow striking similarities to revision magnitude, a
 #| code-summary: "Show the code"
 
 #4. How has the absolute CES revision as a percentage of overall employment level changed over time?
+
+#CALCULATE REVISION PERCENTAGE BY DIVIDING MAGNITUDE (PART) OVER LEVEL (WHOLE)
 percent_employment <- revision_magnitude %>%
   mutate(
     "revision percentage"= abs(revision) / level * 100
   )
 
+#PLOTS THE REVISION PERCENTAGE WITH THE THRESHOLD 0.2 INDICATING HIGH REVISION PERCENTAGE
 ggplot(percent_employment, aes(x = date, y = `revision percentage`)) +
   geom_line(color = "steelblue") +
   labs(
-    title = "Absolute CES Revision as % of Employment Over Time",
+    title = "Revision Percentage of Employment Over Time",
     x = "Date",
     y = "Revision (% of Employment)",
     caption = "Source: BLS CES data"
@@ -357,9 +372,11 @@ Assessing the calculated revision percentages, there were multiple times in whic
 #| code-fold: true
 #| code-summary: "Show the code"
 
+#IDENTIFIES THE MAX AND MIN REVISION PERCENTAGES
 max_percent_employment <- which(percent_employment$"revision percentage" == max(percent_employment$"revision percentage", na.rm = TRUE))
 min_percent_employment <- which(percent_employment$"revision percentage" == min(percent_employment$"revision percentage", na.rm = TRUE))
 
+#HIGHLIGHTS THE MAX AND MIN
 kable(percent_employment) |>
   kable_styling(bootstrap_options = c("striped", "hover"), full_width = FALSE) |>
   scroll_box(height = "400px") |> 
@@ -374,6 +391,7 @@ By observing the monthly trends over the past 45 years, it is evident that Septe
 #| code-summary: "Show the code"
 #5. Are there any months that systematically have larger or smaller CES revisions?
 
+#CALCULATES AVERAGE MONTHLY REVISIONS BY GROUPING BY MONTH, THEN TAKING MEAN REVISIONS
 monthly_revisions <- revision_magnitude |>
   mutate(month = month(date, label = TRUE)) |>  # Jan, Feb, etc.
   group_by(month) %>%
@@ -389,6 +407,7 @@ monthly_revisions <- revision_magnitude |>
     )
   )
 
+#PLOTS ABSOLUTE MEAN REVISIONS FOR EACH MONTH HIGHLIGHTING THE MIN AND MAX REVISIONS
 ggplot(monthly_revisions, aes(x = month, y = `mean of absolute revision`, fill = highlight)) +
   geom_col() +
   geom_text(aes(label = round(`mean of absolute revision`, 0.75)), vjust = -0.5) +
@@ -414,14 +433,15 @@ Calculating the average of absolute revisions show, on average, CES misestimates
 
 #6. How large is the average CES revision in absolute terms? In terms of percent of that month's CES level?
 
+#OBSERVES AVERAGES OF REVISION MAGNITUDE AND REVISION PERCENTAGES
 revision_summary <- joined_ces |>
   mutate(
     abs_revision = abs(revision),
     revision_pct = abs_revision / level * 100
   ) |>
   summarize(
-    "Average Absolute Revision" = mean(abs_revision, na.rm = TRUE),
-    "Average Revision Percentage" = mean(revision_pct, na.rm = TRUE)
+    "Average Magnitude Revision" = mean(abs_revision, na.rm = TRUE), 
+    "Average Revision Percentage" = mean(revision_pct, na.rm = TRUE) 
   )
 
 kable(revision_summary) |>
@@ -437,6 +457,7 @@ Observing averages alone, there has been an increase in negative revisions. With
 
 #1. Has the fraction of negative revisions increased post-2000?
 
+#CALCULATES YEARLY NEGATIVE FRACTIONS
 negative_fraction_per_year <- joined_ces |>
   mutate(year = year(date)) |>
   group_by(year) |>
@@ -444,12 +465,14 @@ negative_fraction_per_year <- joined_ces |>
     fraction_negative = sum(revision < 0, na.rm = TRUE) / sum(!is.na(revision))
   )
 
+#SEPARATES POST 2000 AND PRE 2000 
 pre_post_comparison <- negative_fraction_per_year |>
   mutate(period = ifelse(year >= 2000, "post 2000", "pre 2000")) |>
   group_by(period) |>
   summarize(avg_fraction_negative = mean(fraction_negative, na.rm = TRUE)) |>
   mutate(period = factor(period, levels = c("pre 2000", "post 2000")))
 
+#PLOTS THE DIFFERENCE IN NEGATIVE FRACTIONS
 ggplot(pre_post_comparison, aes(x = period, y = avg_fraction_negative, fill = period)) +
   geom_col() +
   geom_text(aes(label = round(avg_fraction_negative, 2)),  # label values
@@ -470,6 +493,9 @@ Upon conducting a t-test for further statistical analysis, a p-value of 0.3289 w
 #| code-fold: true
 #| code-summary: "Show the code"
 
+#PERFORMS T-TEST
+#NULL HYPOTHESIS: THERE IS NO DIFFERENCE BETWEEN PRE-2000 AND POST-2000 NEGATIVE FRACTIONS
+#ALTERNATIVE HYPTHESIS: THERE IS A DIFFERENCE BETWEEN PRE-2000 AND POST-2000 NEGATIVE FRACTIONS
 negative_revisions <- joined_ces |>
   mutate(
     negative = revision < 0,
@@ -496,6 +522,8 @@ Throughout our exploratory analysis, 2020 repeated appeared as a common outlier.
 #| code-summary: "Show the code"
 
 #4. Has the average revision increased post-2020?
+
+#YEARLY AVERAGE REVISIONS 
 avg_revision_per_year <- joined_ces |>
   mutate(year = year(date)) |>
   group_by(year) |>
@@ -503,6 +531,7 @@ avg_revision_per_year <- joined_ces |>
     average_revision = mean(revision)
   )
 
+#SEPARATED BY PRE 2020 AND POST 2020
 pre_post_avg_comparison <- avg_revision_per_year |>
   mutate(period = ifelse(year >= 2020, "post 2020", "pre 2020")) |>
   group_by(period) |>
@@ -532,7 +561,9 @@ The t-test determines a p-value of 0.6351. Similar to the test before,  the p-va
 pre_values_avg <- avg_revision_per_year$average_revision[avg_revision_per_year$year < 2020]
 post_values_avg <- avg_revision_per_year$average_revision[avg_revision_per_year$year >= 2020]
 
-# Run the t-test
+#RUN T-TEST
+#NULL HYPOTHESIS: THERE IS NO DIFFERENCE BETWEEN PRE 2020 AND POST 2020 AVERAGE YEARLY REVISIONS
+#ALTERNATIVE HYPOTHESIS: THERE IS A DIFFERENCE BETWEEN PRE 2020 AND POST 2020 AVERAGE YEARLY REVISIONS
 t_test_result <- t.test(pre_values_avg, post_values_avg)
 t_test_result
 ```
@@ -545,8 +576,9 @@ t_test_result
 ```{r, echo=TRUE, results='hide', message=FALSE, warning=FALSE}
 #| code-fold: true
 #| code-summary: "Show the code"
-library(tidyverse)
-presidents_party <- tidyr::expand_grid(year=1979:2025, 
+
+#LOADS IN PRESIDENTS PARTY AND TERM PERIODS
+presidents_party <- expand_grid(year=1979:2025, 
                                        month = month.name, 
                                        president = NA, 
                                        party = NA) |> 
@@ -568,35 +600,39 @@ presidents_party <- tidyr::expand_grid(year=1979:2025,
                            "D", 
                            "R")) 
 
+#FILTERS BIDEN AND TRUMP'S CURRENT PRESIDENCY
 claim1 <- presidents_party |>
   filter(president == c("Biden", "Trump II")) 
 
 
+#ADDS MONTH AND YEAR COLUMNS INDIVUALLY USED TO JOIN TABLES 
 claim1_percentage_employment <- percent_employment |>
   mutate(month = month(date, label = TRUE, abbr = FALSE),
          year = year(date))
 
+#JOINS REVISION PERCENTS TO BIDEN AND TRUMP'S TERMS 
 claim1 <- claim1 |>
   left_join(claim1_percentage_employment, by=c("year", "month"))
 
+#IDENTIFIES THE TERMS FOR EACH PRESIDENT
 president_periods <- claim1 |>
   group_by(president) %>%
   summarize(start_date = min(date, na.rm = TRUE),
             end_date   = max(date, na.rm = TRUE))
 
 ggplot(claim1, aes(x = date, y = `revision percentage`)) +
-  # Shade presidential periods
+  # SHADES PRESIDENTIAL PERIODS
   geom_rect(data = president_periods,
             aes(xmin = start_date, xmax = end_date, ymin = -Inf, ymax = Inf, fill = president),
             alpha = 0.1, inherit.aes = FALSE) +
   
-  # Line for revisions
+  # LINE FOR REVISIONS
   geom_line(aes(color = party), size = 1) +
   
-  # Points for each observation
+  # POINTS FOR EACH MONTH'S OBSERVATION
   geom_point(aes(color = party), size = 2) +
   
-  # Highlight November 2024
+  # HIGHLIGHTS NOVEMBER 2024 -- AS STATED BY TRUMP
   geom_point(data = claim1 %>% filter(date == as.Date("2024-11-01")),
              aes(x = date, y = `revision percentage`),
              color = "orange", size = 2) +
@@ -604,10 +640,10 @@ ggplot(claim1, aes(x = date, y = `revision percentage`)) +
             aes(x = date, y = `revision percentage`, label = "Nov 2024"),
             vjust = -1.5, color = "orange", fontface = "bold") +
   
-  # Horizontal line at zero
+  # X=0 LINE
   geom_hline(yintercept = 0, linetype = "dashed") +
   
-  # Labels and theme
+  # LABELS
   labs(title = "CES Revision Percentages Over Time by Presidential Party",
        x = "Date",
        y = "Revision Percentage",
@@ -629,7 +665,7 @@ The first t-test we'll be conducting observes if there is a substantial differen
 #| code-fold: true
 #| code-summary: "Show the code"
 
-# Filter for all previous Novembers (exclude November 2024)
+# FILTERS ALL PREVIOUS NOVEMBERS (EXCLUDING NOVEMBER 2024)
 percent_employment <- percent_employment |>
     mutate(month = month(date, label = TRUE, abbr = FALSE),
          year = year(date)) 
@@ -638,12 +674,12 @@ historical_nov <- percent_employment %>%
   filter(month == "November" & year < 2024) %>%
   pull(`revision percentage`)
 
-# November 2024 revision percentage
+# NOVEMBER 2024 REVISION PERCENTAGE
 nov2024 <- percent_employment %>%
   filter(year == 2024 & month == "November") %>%
   pull(`revision percentage`)
 
-# One-sample t-test: test if Nov 2024 > historical mean
+#ONE-SAMPLE T-TEST: NOV 2024 > HISTORICAL MEAN
 t_test_result <- t.test(historical_nov, mu = nov2024, alternative = "less")
 t_test_result
 ```
@@ -652,6 +688,7 @@ The p-value is significantly larger than 0.05, so we fail to reject the null hyp
 #| code-fold: true
 #| code-summary: "Show the code"
 
+#FILTERS TRUMP'S MOST CURRENT TERM
 trump <- claim1 |>
   filter(president == "Trump II") |>
   mutate(
@@ -664,11 +701,14 @@ Trump's first term dealt with the unprecedented events of COVID-19 that heavily 
 ```{r, warning=FALSE}
 #| code-fold: true
 #| code-summary: "Show the code"
+
+#RETRIVES TRUMP'S FIRST AND SECOND TERM
 trump_full_terms <- presidents_party |>
   left_join(percent_employment, by = c("month","year")) |>
   filter(str_detect(president, "Trump"))|>
   mutate(term = ifelse(president == "Trump I", "Trump's First Term (2017-2021)", "Trump's Second Term (Present)"))
 
+#PLOTS BOTH TERMS
 ggplot(trump_full_terms, aes(x = date, y = level)) +
   geom_line(color = "steelblue", size = 1) +
   facet_wrap(~ term, scales = "free_x") +
@@ -696,9 +736,12 @@ Just from observing reported levels, Biden's claim presumed to be true. Indeed, 
 ```{r, warning=FALSE}
 #| code-fold: true
 #| code-summary: "Show the code"
+
+#FILTERS BIDEN'S TERM
 biden <- claim1 |>
   filter(president == "Biden")
 
+#PLOTS PAYROLL DURING BIDEN'S TERM
 ggplot(biden, aes(x = date, y = level)) +
   geom_line(color = "steelblue", size = 1) +  # line chart
   labs(
@@ -717,12 +760,15 @@ To compare the the job market growth under each president's term, the monthly ch
 #| code-fold: true
 #| code-summary: "Show the code"
 
+#BIDEN VS TRUMP 
 biden_v_trump <- bind_rows(biden, trump_full_terms)
 
+#CALCULATES MONTHLY CHANGE IN LEVELS 
 biden_v_trump_testing <- biden_v_trump |>
   group_by(party) |>
   mutate(`monthly change` = level - lag(level))
 
+#FILTERS RELEVANT STATISTICS
 biden_v_trump_table <- biden_v_trump_testing |>
   mutate(date = ymd(paste(year, month, "01"))) |>
   select(date, president, magnitude, `revision percentage`, `monthly change`) 
