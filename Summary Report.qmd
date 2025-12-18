@@ -1,0 +1,46 @@
+---
+title: "Summary Report"
+author: "Eduardo Alarcon, Madison Brinson, Kelly Li, Tiffany Ng, Jonathan Sucuc Socoy"
+---
+
+# Introduction
+The COVID-19 pandemic was a global shock with lasting impacts that continue to persist in everyday life. Understanding these changes is essential to identifying where aid is needed the most. This research aims to examine whether **COVID-19 reshaped the relationship between neighborhood characteristics and property values across NYC's 59 Community Districts?**
+
+The neighborhood characteristics chosen for analysis reflect aspects of residents' quality of life. This includes public transportation accessibility, educational attainment, crime rates, job accessibility, and residential density. To examine these changes, the analysis compares pre-COVID (2017-2019) and post-COVID (2021-2023) patterns. 
+
+# Relation to Prior Work 
+The [New York City Comptroller's Office](https://www.nyc.gov/content/planning/pages/resources/datasets/community-districts) emphasizes that post-COVID recovery has been uneven across neighborhoods. While the city has shown resilience throughout the years, housing shortages and affordability remain major concerns that may have been further challenged by the pandemic. The contribution of our research, in addition to an in-depth analysis of each neighborhood characteristics as an individual unit, is how they interact with one another and, collectively, how well they predict property values, to assess their relation. 
+
+# Tranportation Ridership and Accessibility
+#### Did the relationship between transit accessibility, ridership levels, and property values change from pre-COVID and post-COVID across NYC's CDs?
+
+
+# Educational Attainment
+#### Did the strength of the relationship between neighborhood education attainment and property values change post-COVID, and did this change differ across NYC's CDs?
+
+# Crime Rates
+#### How did crime’s impact on property values (housing costs) change from pre-COVID to post-COVID across NYC's CDs and did this shift vary by initial crime levels?
+A key component of the broader question of whether COVID-19 reshaped the relationship between neighborhood characteristics and property values across New York City’s Community Districts is understanding how the role of crime evolved over this period. Crime has long been viewed as a negative neighborhood amenity influencing residential choice and housing demand, but the COVID-19 pandemic disrupted mobility, policing, and neighborhood use in ways that may have altered this relationship. This portion of the analysis focuses on how the impact of serious crime on property values changed from the pre-COVID (2017-2019) to the post-COVID (2021-2023) period, and whether districts with different baseline crime levels experienced these shifts differently.
+
+To address this question, this study integrates Community District-level serious crime rates with housing sales data and compares patterns across the two periods. The analysis uses descriptive comparisons, scatterplots, and grouping districts by pre-COVID crime terciles to assess both how crime changed after COVID and whether changes in crime were associated with shifts in median housing prices. The datasets used are the [NYC Department of Finance housing sales data](https://www.nyc.gov/site/finance/about/open-portal.page), [NYPD crime statistics](https://app.coredata.nyc/?mlb=false&mlf=false&ntr=&mz=14&vtl=https%3A%2F%2Fthefurmancenter.carto.com%2Fu%2Fnyufc%2Fapi%2Fv2%2Fviz%2F98d1f16e-95fd-4e52-a2b1-b7abaf634828%2Fviz.json&mln=false&mlp=true&mlat=40.718&nty=&mb=roadmap&pf=%7B%22subsidies%22%3Atrue%7D&md=map&mlng=-73.996&btl=Borough&atp=properties) from the NYU Furman Center, and [Pluto](https://www.nyc.gov/content/planning/pages/resources/datasets/mappluto-pluto-change) data to link properties to Community Districts. These methods directly test whether COVID altered the strength or consistency of the crime-price relationship rather than simply changing crime levels alone. 
+
+Several visualizations most clearly connect this analysis to the overarching question. 
+
+- Side-by-side scatterplots of crime rates versus median housing prices before and after COVID show that the average relationship between crime and property values remained relatively flat across periods, suggesting no fundamental citywide shift. 
+
+- A bar chart of post-COVID crime changes by pre-COVID crime group demonstrates that increases in serious crime were widespread but largest in already high-crime districts, indicating uneven neighborhood impacts. 
+
+- An interactive map displaying simultaneous changes in crime rates and housing prices across Community Districts highlights substantial spatial heterogeneity, reinforcing that COVID-era effects varied sharply by neighborhood.
+
+Overall, the findings about crime align with prior literature viewing crime as a negative amenity but suggest that COVID made its influence on housing prices more heterogeneous and less predictive on average. Future work could incorporate additional neighborhood characteristics (such as work-from-home exposure, transit access, or demographic change) to better explain how and why COVID reshaped neighborhood-price dynamics across NYC.
+
+# Job Accessibility
+#### How did the relationship between (job proximity; number of jobs within a neighborhood) and property values shift from the pre-COVID era to the post-CVOID era, given the context of the rise of remote work?
+
+# Residential Density
+#### Did high residential density become a penalty for property values post-COVID across NYC's CDs, and did this "density penalty" vary by baseline density level?
+
+# Conclusion 
+
+# Next Steps
+To refine our model, the neighborhood characteristics that didn't pose as strong predictors of property values could be substituted for other factors of examination to improve its accuracy. With additional time and resources, this improved model could be applied to other major U.S. cities to further test its validity. While also allowing for a more comprehensive analysis of where New York City's post-COVID progress stands. 
