@@ -6,52 +6,67 @@ author: "Eduardo Alarcon, Madison Brinson, Kelly Li, Tiffany Ng, Jonathan Sucuc 
 # Introduction
 The COVID-19 pandemic was a global shock with lasting impacts that continue to persist in everyday life. Understanding these changes is essential to identifying where aid is needed the most. This research aims to examine whether **COVID-19 reshaped the relationship between neighborhood characteristics and property values across NYC's 59 Community Districts?**
 
-The neighborhood characteristics chosen for analysis reflect aspects of residents' quality of life. This includes public transportation accessibility, educational attainment, crime rates, job accessibility, and residential density. To examine these changes, the analysis compares pre-COVID (2017-2019) and post-COVID (2021-2023) patterns. 
+The neighborhood characteristics chosen for analysis reflect aspects of residents' quality of life. This includes public transportation accessibility, educational attainment, crime rates, job accessibility, and housing density. To examine these changes, the analysis compares pre-COVID (2017-2019) and post-COVID (2021-2023) patterns. 
+
+**Note**: Individual reports can be accessed through the hyperlinked questions under each neighborhood characteristics section.
 
 # Relation to Prior Work 
-The [New York City Comptroller's Office](https://www.nyc.gov/content/planning/pages/resources/datasets/community-districts) emphasizes that post-COVID recovery has been uneven across neighborhoods. While the city has shown resilience throughout the years, housing shortages and affordability remain major concerns that may have been further challenged by the pandemic. The contribution of our research, in addition to an in-depth analysis of each neighborhood characteristics as an individual unit, is how they interact with one another and, collectively, how well they predict property values, to assess their relation. 
+The [New York City Comptroller's Office](https://comptroller.nyc.gov/reports/nycs-post-pandemic-rebound-resilience-meets-headwinds/) emphasizes that post-COVID recovery has been uneven across neighborhoods. While the city has shown resilience, housing shortages and affordability remain major concerns that have been further challenged by the pandemic. The contribution of our research is how the specified neighborhood characteristics interact with one another and, collectively, how well they predict property values. 
 
 # I. Tranportation Ridership and Accessibility
-#### Did the relationship between transit accessibility, ridership levels, and property values change from pre-COVID and post-COVID across NYC's CDs?
+[Did the relationship between transit accessibility, ridership levels, and property values change from pre-COVID and post-COVID across NYC's CDs?](https://tiffany-ngli.github.io/STA9750-2025-FALL/Individual%20Report.html)
 
+NYC's ridership was assessed through the services supported by the MTA, running subways, buses, and the Staten Island Railroad (SIR) across all 5 boroughs. To answer the specific question above, we observed changes in ridership level, calculated an accessibility score metric, and compared these results pre-COVID versus post-COVID. These findings build on top of the [New York City Comptroller's Office’s](https://comptroller.nyc.gov/reports/nycs-post-pandemic-rebound-resilience-meets-headwinds/) findings, which demonstrated a 20% decline between the initial pre-pandemic period (March 2019 through February 2020) and recent days (May 2024 through April 2025). 
+Our percent changes between pre-COVID (2017-2019) and post-COVID (2021-2023) encompass a wider time span in ridership, depicting similar results, as it presents a moderate decline in ridership. 
+
+![](Transit01)
+
+Taking ridership into account in relation to property values, the positive slope in the linear regression model shows that CDs with higher total annual transit ridership tend to have higher property values. This trend remained persistent pre-COVID and post-COVID, although the strength weakened, reflected in the drop in R-square. However, the red shaded region in the graph shows high levels of variation, and a moderate R-squared value reflects uncertainty in the model, indicating that ridership alone is not a sufficient predictor for property value. 
+
+![](Transit02)
+
+Looking at the calculated accessibility score metric, CDs with higher scores tend to have higher property value, and this positive relationship remained from pre-COVID to post-COVID, once again observing a slight drop in strength through the R-squared value.  
+
+![](Transit03)
+
+To conclude, there were significant declines in ridership levels over the years that also affected accessibility scores. Relating this to the specific question, the relationship between ridership and accessibility towards property value did not change, as it retained its positive correlation; however, it did weaken post-COVID.
 
 # II. Educational Attainment
 [Did the strength of the relationship between neighborhood education attainment and property values change post-COVID, and did this change differ across NYC's CDs?](https://eduardonyc.github.io/STA9750-2025-FALL/finalproject.html)
 
-Our analysis also examined Educational Attainment (EA) as an essential neighborhood characteristic that may affect property values. Specifically, we wanted to determine if the COVID-19 pandemic influenced property values when comparing pre- and post-pandemic eras through the following research question:
+Our analysis examined Educational Attainment (EA) as an essential neighborhood characteristic affecting property values, addressing this research question:
 
-Did the strength of the relationship between neighborhood educational attainment (EA) and property values change post-COVID, and did this change differ across NYC’s CDs?
+*Did the strength of the relationship between neighborhood educational attainment (EA) and property values change post-COVID, and did this change differ across NYC’s CDs?*
 
-[Historically, neighborhood EA has reliably predicted property values, with highly educated workers driving economic demand and raising real estate prices.](https://howhousingmatters.org/research-summary/impact-communities-new-geography-jobs) We expected higher-education CDs to surge during the pandemic recovery (e.g., 2021-2023). Instead, findings reveal a dramatic and statistically significant reversal of this trend.
+[Historically, neighborhood EA has reliably predicted property values, with highly educated workers driving economic demand and raising real estate prices.](https://howhousingmatters.org/research-summary/impact-communities-new-geography-jobs) We expected high-education CDs to surge during the pandemic recovery (2021-2023). Instead, findings reveal a dramatic and statistically significant reversal of this trend.
 
-To isolate the pandemic's impact on market demand from demographic shifts, we measured each CD's EA once using 2019 American Community Survey (ACS) data. We held it constant across both periods (pre-COVID: 2017-2019; post-COVID: 2021-2023). As shown in the choropleth map below, EA levels vary drastically across the city's 59 CDs, ranging from a low of 11.8% “BA+ Attainment,” where BA+ signifies at least a “Bachelor of Arts” degree, in the South Bronx (BX01) to a high of 82.7% in Manhattan’s Midtown area (MN05).
+To isolate the pandemic's impact on market demand from demographic shifts, we measured each CD's EA once using 2019 American Community Survey (ACS) data. We held it constant across both periods (pre-COVID: 2017-2019; post-COVID: 2021-2023). As shown in the choropleth map below, EA levels vary drastically across the city's 59 CDs, ranging from a low of 11.8% “BA+ Attainment” (bachelor’s degree or higher) in the South Bronx (BX01) to 82.7% in Manhattan’s Midtown area (MN05).
 
 ![](Education01)
 
-By holding EA constant, we were also able to focus our analysis on determining if neighborhoods with the same 2019 education level experienced different property value growth patterns post-COVID. Initial research showed a correlation between EA and property values in pre- and post-era settings. The overall correlation between these variables declined modestly, from r = 0.77 to r = 0.74. However, this modest 0.03 decline in correlation concealed a profound shift in growth dynamics.
-When dividing NYC's 59 CDs into three equal groups by education level (Low, Medium, High terciles), a complete reversal of the traditional "education premium" emerged. Specifically, low-education neighborhoods in the bottom tercile, with a median BA+ EA of 19.2%, saw a 26% increase in median property value. Conversely, high-education neighborhoods in the top tercile, with a median EA of 53.0% BA+, grew by only 11.9%, less than half the rate of their lower-attainment counterparts. The tercile chart below highlights the stark growth differential between these opposing educational neighborhoods.
+Initial research showed a correlation between EA and property values in pre- and post-era settings. The overall correlation between these variables declined modestly, from r = 0.77 to r = 0.74. However, this modest 0.03 decline in correlation concealed a profound shift in growth dynamics. When dividing NYC's 59 CDs into three equal groups by education level (Low, Medium, High terciles), a complete reversal of the traditional "education premium" emerged. Low-education neighborhoods, with a median BA+ EA of 19.2%, saw a 26% increase in median property value. Conversely, high-education neighborhoods, with a median EA of 53.0% BA+, grew by only 11.9%, less than half the rate of their lower-attainment counterparts, as shown below.
 
 ![](Education02)
 
-As shown below, a two-sample t-test confirmed that this 14.2 percentage-point difference in growth rates between education terciles was statistically significant, supporting the conclusion that COVID-19 fundamentally reshaped the relationship between neighborhood characteristics and property values.
+The two-sample t-test below confirmed that this 14.2 percentage-point difference in growth rates between education terciles was statistically significant, supporting the conclusion that COVID-19 fundamentally reshaped the relationship between neighborhood characteristics and property values.
 
 ![](Education03)
 
-To confirm these results weren't limited to Manhattan, we ran individual borough-level linear regressions.  Our analysis found a negative relationship between education and growth across all boroughs, indicating a “growth penalty” across the city. Although the impact varied, all boroughs showed that higher education levels were associated with lower post-COVID growth in property values.
+To verify these results weren't limited to Manhattan, we ran individual borough-level linear regressions. As shown below, all boroughs showed that high EA was associated with lower post-COVID growth in property values.
 
 ![](Education04)
 
-[These findings suggest that the pandemic challenged agglomeration effects](https://www.annualreviews.org/deliver/fulltext/resource/11/1/annurev-resource-100518-094151.pdf?itemId=/content/journals/10.1146/annurev-resource-100518-094151&mimeType=application/pdf), as definitions of employment changed with the rise of remote work, reducing the need to live near jobs in high-education NYC CDs. Additionally, general housing affordability motivated buyers to move to lower-cost areas. Outer-borough CDs, such as the South Bronx, which had previously been undervalued, experienced higher rates of property value appreciation. These results further indicate that the traditional “educational premium” associated with higher-education CDs led to post-COVID searches for lower-cost areas.
-Our research demonstrates how the pandemic reversed the well-established logic between EA and NYC real estate. As a result, we address our overarching question by showing that COVID-19 not only disrupted the real estate market but also reshaped the relationship between neighborhood characteristics and property value.
+[These findings suggest that the pandemic challenged agglomeration effects,](https://www.annualreviews.org/deliver/fulltext/resource/11/1/annurev-resource-100518-094151.pdf?itemId=/content/journals/10.1146/annurev-resource-100518-094151&mimeType=application/pdf), as increasing remote work reduced the need for proximity to employment opportunities in high-education CDs. Additionally, housing affordability motivated buyers to move to lower-cost areas. Outer-borough CDs, such as the South Bronx, which had previously been undervalued, experienced higher rates of property value appreciation.
 
-*Additional information, including detailed methodology and supplementary diagnostic plots, is available in the comprehensive project report linked below.*
+Our research demonstrates how the pandemic reversed the well-established logic between EA and NYC property values. These findings address our overarching question by showing that COVID-19 not only disrupted the real estate market but also reshaped the relationship between neighborhood characteristics and property value.
+
 
 # III. Crime Rates
 [How did crime’s impact on property values (housing costs) change from pre-COVID to post-COVID across NYC's CDs and did this shift vary by initial crime levels?](https://kelmli.github.io/STA9750-2025-FALL/final_proj.html)
 
-A key component of the broader question of whether COVID-19 reshaped the relationship between neighborhood characteristics and property values across New York City’s Community Districts is understanding how the role of crime evolved over this period. Crime has long been viewed as a negative neighborhood amenity influencing residential choice and housing demand, but the COVID-19 pandemic disrupted mobility, policing, and neighborhood use in ways that may have altered this relationship. This portion of the analysis focuses on how the impact of serious crime on property values changed from the pre-COVID (2017-2019) to the post-COVID (2021-2023) period, and whether districts with different baseline crime levels experienced these shifts differently.
+A key component of understanding whether COVID-19 reshaped the link between neighborhood characteristics and property values in NYC’s Community Districts is examining how crime’s role evolved. Crime has long negatively influenced housing demand, but the pandemic disrupted mobility, policing, and neighborhood use, potentially altering this effect. This analysis focuses on how serious crime impacted property values from the pre-COVID (2017–2019) to post-COVID (2021–2023) period, and whether districts with different baseline crime levels experienced these changes differently.
 
-To address this question, this study integrates Community District-level serious crime rates with housing sales data and compares patterns across the two periods. The analysis uses descriptive comparisons, scatterplots, and grouping districts by pre-COVID crime terciles to assess both how crime changed after COVID and whether changes in crime were associated with shifts in median housing prices. The datasets used are the [NYC Department of Finance housing sales data](https://www.nyc.gov/site/finance/about/open-portal.page), [NYPD crime statistics](https://app.coredata.nyc/?mlb=false&mlf=false&ntr=&mz=14&vtl=https%3A%2F%2Fthefurmancenter.carto.com%2Fu%2Fnyufc%2Fapi%2Fv2%2Fviz%2F98d1f16e-95fd-4e52-a2b1-b7abaf634828%2Fviz.json&mln=false&mlp=true&mlat=40.718&nty=&mb=roadmap&pf=%7B%22subsidies%22%3Atrue%7D&md=map&mlng=-73.996&btl=Borough&atp=properties) from the NYU Furman Center, and [Pluto](https://www.nyc.gov/content/planning/pages/resources/datasets/mappluto-pluto-change) data to link properties to Community Districts. These methods directly test whether COVID altered the strength or consistency of the crime-price relationship rather than simply changing crime levels alone. 
+To address this question, this study integrates Community District-level serious crime rates with housing sales data and compares patterns across the two periods. The analysis uses descriptive comparisons, scatterplots, and groups districts by pre-COVID crime terciles to assess how crime changed after COVID and whether changes were associated with shifts in median housing prices. The datasets used are the [NYC Department of Finance housing sales data](https://www.nyc.gov/site/finance/about/open-portal.page), [NYPD crime statistics from the NYU Furman Center](https://app.coredata.nyc/?mlb=false&mlf=false&ntr=&mz=14&vtl=https%3A%2F%2Fthefurmancenter.carto.com%2Fu%2Fnyufc%2Fapi%2Fv2%2Fviz%2F98d1f16e-95fd-4e52-a2b1-b7abaf634828%2Fviz.json&mln=false&mlp=true&mlat=40.718&nty=&mb=roadmap&pf=%7B%22subsidies%22%3Atrue%7D&md=map&mlng=-73.996&btl=Borough&atp=properties), and [Pluto](https://www.nyc.gov/content/planning/pages/resources/datasets/mappluto-pluto-change) data to link properties to Community Districts. These methods directly test whether COVID altered the strength or consistency of the crime-price relationship rather than simply changing crime levels alone. 
 
 Several visualizations most clearly connect this analysis to the overarching question. 
 
@@ -61,10 +76,10 @@ Side-by-side scatterplots of crime rates versus median housing prices before and
 A bar chart of post-COVID crime changes by pre-COVID crime group demonstrates that increases in serious crime were widespread but largest in already high-crime districts, indicating uneven neighborhood impacts. 
 ![](Crime02)
 
-An interactive map displaying simultaneous changes in crime rates and housing prices across Community Districts highlights substantial spatial heterogeneity, reinforcing that COVID-era effects varied sharply by neighborhood.
+An interactive map showing changes in crime rates and housing prices across Community Districts highlights substantial spatial heterogeneity, indicating COVID-era effects varied sharply by neighborhood.
 ![](Crime03)
 
-Overall, the findings about crime align with prior literature viewing crime as a negative amenity but suggest that COVID made its influence on housing prices more heterogeneous and less predictive on average. Future work could incorporate additional neighborhood characteristics (such as work-from-home exposure, transit access, or demographic change) to better explain how and why COVID reshaped neighborhood-price dynamics across NYC.
+Overall, findings align with prior research viewing crime as a negative amenity but suggest COVID made its impact on housing prices more heterogeneous. Future work could include factors like work-from-home trends, transit access, or demographic changes to better explain how COVID reshaped neighborhood-price dynamics in NYC.
 
 # IV. Job Accessibility
 [How did the relationship between (job proximity; number of jobs within a neighborhood) and property values shift from the pre-COVID era to the post-CVOID era, given the context of the rise of remote work?](https://madisonbrinson.github.io/STA9750-2025-FALL/individual_report_final.html)
@@ -90,10 +105,44 @@ The bivariate map categorizes each Community District by whether jobs and proper
 The scatter plot shows a weak positive correlation (r = 0.18) between job accessibility change and property value change across Community Districts. There's a lot of variation across boroughs. Bronx and Brooklyn districts saw some of the highest property value gains regardless of whether jobs increased or decreased.
 While the overall job-price correlation remained stable, the pattern of price growth favored lower-accessibility neighborhoods. This suggests that even though job proximity still commands a premium, remote work may have made buyers more willing to consider locations farther from job centers than they would have been before the pandemic.
 
-# Residential Density
-#### Did high residential density become a penalty for property values post-COVID across NYC's CDs, and did this "density penalty" vary by baseline density level?
+# V. Residential Density
+[Did high residential density become a penalty for property values post-COVID across NYC's CDs, and did this "density penalty" vary by baseline density level?](https://socoyjonathan.github.io/STA9750-2025-FALL/final_project.html)
 
-# Conclusion 
+For decades, urban economics theory held that density commanded premium prices due to proximity to jobs, services, and amenities. The COVID-19 pandemic potentially challenged this through health concerns about crowding, reduced commuting value, and increased demand for personal space. Understanding whether density itself became a liability \is essential for urban planning and housing policy.
+
+Using 2015-2019 ACS density measures aggregated to Community Districts, we compared property value changes across pre-COVID (2017-2019) and post-COVID (2021-2023) periods. A key limitation: using 2019 data means we miss pandemic-induced demographic shifts.
+
+Initial analysis revealed a density gradient: lower-density districts averaged 19.6% growth versus 15.4% in higher-density areas. However, linear regression showed weak evidence—correlation of r = -0.319 (p = 0.014), with each 10,000 unit/sq mi increase associated with just 0.79 percentage points less growth (p = 0.345), explaining only 1.6% of variation. Manhattan CD 6 (53,000 units/sq mi) saw values drop 3%, while Bronx CD 7 (27,000 units/sq mi) surged 52%.
+
+**However, even this weak relationship proved spurious.** In multivariable regression with education, transit, crime, and jobs, density became completely non-significant (p = 0.678). The density gradient was real but indirect—dense neighborhoods suffered because they housed educated workers who gained mobility through remote work, not because of physical form itself. Education drove the mechanism (β = -0.40, p < 0.001), not density. **Density was a marker, not the mechanism.**
+
+![](Resident01)
+
+This aligns with Glaeser's work on agglomeration effects while complementing the NYC Comptroller's findings: recovery diverged through occupational sorting, not urban flight. See [Jonathan's](https://socoyjonathan.github.io/STA9750-2025-FALL/final_project.html) full analysis for details.
+# Integrating Findings: What Really Drove Post-COVID Changes?
+Did COVID-19 reshape the relationship between neighborhood characteristics and property values? 
+**Absolutely yes—but not in the ways initial observations suggested.**
+
+Our team's five specific questions—examining density, education, transit, crime, and jobs—were designed to comprehensively test which neighborhood characteristics predicted property value trajectories. Each characteristic represented a dimension of urban quality of life that pandemic disruptions might have affected differently. Importantly, we didn't just examine these factors in isolation; we integrated them through multivariable regression to understand their joint explanatory power.
+
+The multivariable model (R² = 0.37, explaining 37% of variation across 51 CDs with complete data) revealed a clear hierarchy among factors:
+
+![](Findings01)
+
+Educational attainment dominated (β = -0.40, p < 0.001)—the only significant predictor when all factors were considered together. Each 1% increase in bachelor's degree holders predicted 0.40% lower appreciation. This represents a complete inversion from pre-COVID patterns, where educated neighborhoods commanded premiums. Remote work freed knowledge workers to relocate, and these neighborhoods saw the slowest growth.
+
+Other factors became non-significant: Transit ridership changes (p = 0.063), crime changes (p = 0.765), job losses (p = 0.597), and density (p = 0.678) all failed to predict outcomes when education was controlled. This doesn't mean these factors are unimportant in absolute terms—job-accessible locations still command premiums, and dense areas remain expensive. Rather, changes in these characteristics couldn't differentiate post-COVID winners from losers once we accounted for educational composition.
+This integration reveals the pandemic's mechanism: it wasn't about density penalties, transit collapse, or crime increases per se. It was about who could leave and did leave—educated remote workers relocating from high-cost urban cores to more affordable neighborhoods. The apparent density gradient was actually an education penalty in disguise. Dense neighborhoods struggled because they were educated job centers, not because density itself became undesirable.
+
+This finding meaningfully integrates individual analyses: Eduardo's education findings explain Jonathan's density patterns; Madison's stable job-price correlation persists despite remote work because fundamentals still matter; Kelly's non-significant crime effects and Tiffany's non-significant transit effects both make sense when education is the primary driver. The quantitative integration—through multivariable regression rather than simple juxtaposition—provides a comprehensive answer supported by all five specific questions.
 
 # Next Steps
-To refine our model, the neighborhood characteristics that didn't pose as strong predictors of property values could be substituted for other factors of examination to improve its accuracy. With additional time and resources, this improved model could be applied to other major U.S. cities to further test its validity. While also allowing for a more comprehensive analysis of where New York City's post-COVID progress stands. 
+Three critical research directions would extend our findings and address remaining limitations:
+
+**1. Comparative analysis:** Replicate across San Francisco, Chicago, Boston, DC to test whether NYC's education-driven sorting is unique or generalizable.
+
+**2. Temporal tracking:** Extend through 2025-2026 to assess whether patterns are permanent or temporary as return-to-office mandates proliferate.
+
+**3. Equity implications:** Analyze whether rapid appreciation in lower-education neighborhoods (like Bronx CD 7's 52% surge) creates displacement risks for longtime residents.
+Incorporating omitted variables—school quality, green space, housing age—could improve the model's 37% explanatory power.
+
