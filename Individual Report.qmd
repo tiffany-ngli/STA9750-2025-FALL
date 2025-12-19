@@ -1,12 +1,10 @@
 ---
-title: "Transportation Accessibility & Ridership - Individual Report"
+title: "Transportation Accessibility & Ridership"
 author: Tiffany Ng Li
 ---
-[Overarching Question](https://tiffany-ngli.github.io/STA9750-2025-FALL/Summary%20Report.html): Did COVID-19 reshape the relationship between neighborhood characteristics and property values across NYC's 59 Community Districts? 
-
-### SQ: Did the relationship between transit accessibility, ridership levels, and property values change from pre-COVID and post-COVID across NYC's Community Districts? 
-
 # INTRODUCTION
+The MTA is one of the most relied on public transportation services in NYC, [retaining high ridership levels post-pandemic across major metro areas. However, post-COVID saw a 20% decline in ridership.](https://comptroller.nyc.gov/reports/nycs-post-pandemic-rebound-resilience-meets-headwinds/) Even so, daily ridership today sees up to 4.5 million riders across MTA's subway and bus services alone. These changes beg the question: did the relationship between transit accessibility, ridership levels, and property values change from pre-COVID and post-COVID across NYC's Community Districts? 
+
 ```{r, echo=TRUE, results='hide', message=FALSE, warning=FALSE}
 #| code-fold: true
 #| code-summary: "Loading in Libraries"
@@ -46,7 +44,8 @@ Initially, observing MTA subway ridership was not enough to cover all 59 communi
 
 
 ### Community Districts & Housing Prices Data
-Housing sale prices were reported by NYC’s Department of Finance, located at the Borough, Block, Lot (BBL) level, which were each house to its corresponding CD through Pluto, and finally matched back to the CD shapefile for its boundaries.
+Housing sale prices were reported by NYC’s Department of Finance, located at the Borough, Block, Lot (BBL) level, which was matched to each house's corresponding CD through Pluto, and finally matched back to the CD shapefile for its boundaries.
+
 [59 Community Districts](https://www.nyc.gov/content/planning/pages/resources/datasets/community-districts)
 ```{r, echo=TRUE, results='hide', message=FALSE, warning=FALSE}
 #| code-fold: true
@@ -681,9 +680,10 @@ bus_stops_geompoints <- function() {
   
   url <- "https://raw.githubusercontent.com/miranda-adams/NYC-bus-stops-by-route/master/bus_stops_gis.csv"
   
-  cat("Reading bus stops data from GitHub...\n")
-  
   data <- read.csv(url, stringsAsFactors = FALSE)
+  
+  data <- data |>
+    mutate(route_id = str_extract(route_id, "^[A-Za-z]+[0-9]+"))
   
   return(data)
 }
@@ -1111,8 +1111,11 @@ To avoid repetition, the convention of unique column names is explained below. A
   * Dimensions and shape of CDs used for mapping and visuals.
   
 # FINDINGS & VISUALIZATIONS
-### Accessing Ridership 
-Observing the percent change in ridership between pre-COVID and post-COVID, there is a uniform trend of moderate decline in ridership seen across all community districts. With darker shades of orange emphasizing severity. Note to professor: To address the difference seen in this graph displayed in my individual report versus the final presentation, having dedicated more time to analyze the data post presentation, I acquired more accurate ridership counts in Staten Island for pre-COVID, specifically from bus ridership that initially had been overlooked due to differing naming conventions that have since been addressed. To contextualize the decline in ridership to current events, a plausible explanation is the shift towards working remotely. 
+Note to professor: To address the differences seen in the visuals displayed in my individual report versus the final presentation, having more time to work on the analysis post presentation, I was able to acquire more accurate bus ridership counts that initially had been overlooked due to differing naming conventions, so the counts in ridership increased once they were correctly allocated. This significantly impacted the ridership in Staten Island specifically, which caused an apparent change in the graph below, as well as the regression models to come. Additionally, it also addressed a previous limitation we had with my data not covering all 58 CDs. Interestingly enough, the subway stations most BX06 residents rely on lie outside of the boundaries of the community district. Once again, fixing the naming convention for bus stop routes allowed for more accurate matchings that accounted for the bus routes running through BX06
+
+###  Ridership 
+Evaluating the percent change in ridership between pre-COVID and post-COVID, there is a uniform trend of moderate decline in ridership seen across all community districts. With darker shades of orange emphasizing severity. To contextualize the decline in ridership to current events, a plausible explanation is the shift towards working remotely. 
+
 ```{r, fig.width=12, fig.height=8, dpi=300}
 #| code-fold: true
 #| code-summary: "Show code"
@@ -1120,8 +1123,8 @@ Observing the percent change in ridership between pre-COVID and post-COVID, ther
 # ==============================================================================
 # 1. SPATIAL MAPS: PERCENT CHANGE BY COMMUNITY DISTRICT
 # ==============================================================================
-plot_data <- cd_ridership_sales_price_sf %>%
-  rename_with(~str_replace_all(., " ", "_") %>% str_to_lower())
+plot_data <- cd_ridership_sales_price_sf |>
+  rename_with(~str_replace_all(., " ", "_") |> str_to_lower())
 
 # Define borough colors
 borough_colors <- c(
@@ -1159,130 +1162,10 @@ p1 <- ggplot(plot_data) +
 print(p1)
 ```
 
-### Pre-COVID Linear Model
-```{r, echo=TRUE, message=FALSE, warning=FALSE}
+In relation to ridership, both linear regression models for pre-COVID and post-COVID showed statistically significant predictors of property values, with p-values less than 0.001. Although uncertainty in the model remains prevalent, as demonstrated by the moderate R-squared value.
+```{r, echo=TRUE, results='hide', warning=FALSE, message=FALSE}
 #| code-fold: true
-#| code-summary: "Show code"
-
-# Calculate R-squared for Pre-COVID
-model_pre <- lm(median_sale_price_precovid ~ accessibility_score_precovid, 
-                data = plot_data |> st_drop_geometry())
-
-# p-value: 3.87e-07 indicating there is a statistically significant relationship between pre-COVID accessibility score and median housing sale price
-summary(model_pre)
-r2_pre <- summary(model_pre)$r.squared
-
-# Coefficients table 
-coef_tbl_pre <- tidy(model_pre, conf.int = FALSE) %>%
-  mutate(p.value = signif(p.value, 3),
-         estimate = round(estimate, 1),
-         std.error = round(std.error, 1)) %>%
-  rename(Term = term,
-         Estimate = estimate,
-         `Std. Error` = std.error,
-         `p-value` = p.value)
-
-kable(coef_tbl_pre)
-```
-
-### Post-COVID Linear Model
-```{r, echo=TRUE, message=FALSE, warning=FALSE}
-#| code-fold: true
-#| code-summary: "Show code"
-
-# Calculate R-squared for Post-COVID
-model_post <- lm(median_sale_price_postcovid ~ accessibility_score_postcovid, 
-                 data = plot_data|>st_drop_geometry())
-
-# p-value: 5.32e-07 indicating there is a statistically significant relationship between post-COVID accessibility score and median housing sale price
-summary(model_post)
-r2_post <- summary(model_post)$r.squared
-
-# Coefficients table 
-coef_tbl_post <- tidy(model_post, conf.int = FALSE) %>%
-  mutate(p.value = signif(p.value, 3),
-         estimate = round(estimate, 1),
-         std.error = round(std.error, 1)) %>%
-  rename(Term = term,
-         Estimate = estimate,
-         `Std. Error` = std.error,
-         `p-value` = p.value)
-
-kable(coef_tbl_post, caption = "Pre-COVID Linear Model")
-```
-
-```{r, fig.width=12, fig.height=8, dpi=300, warning=FALSE, message=FALSE}
-#| code-fold: true
-#| code-summary: "Show code"
-
-# ============================================================================
-# 2. ACCESSIBILITY vs HOUSING PRICES SCATTER
-# ============================================================================
-# Pre-COVID plot
-p2a <- ggplot(plot_data, aes(x = accessibility_score_precovid, 
-                              y = median_sale_price_precovid / 1000,
-                              color = borough,
-                              size = mean_precovid / 1000000)) +
-  geom_point(alpha = 0.7) +
-  geom_smooth(method = "lm", se = TRUE, color = "gray30", linetype = "dashed", linewidth = 0.8) +
-  annotate("text", x = Inf, y = Inf, 
-           label = paste0("R² = ", round(r2_pre, 3)), 
-           hjust = 1.1, vjust = 1.5, size = 5, fontface = "bold", color = "gray20") +
-  scale_color_manual(values = borough_colors,
-                     labels = c("Manhattan", "Brooklyn", "Queens", "Bronx", "Staten Island")) +
-  scale_size_continuous(range = c(3, 12), 
-                        name = "Ridership\n(Millions)") +
-  labs(title = "Pre-COVID (2017-2019)",
-       x = "Accessibility Score",
-       y = "Median Sale Price ($1000s)",
-       color = "Borough") +
-  theme_minimal(base_size = 12) +
-  theme(
-    plot.title = element_text(face = "bold", size = 14),
-    panel.grid.minor = element_blank(),
-    legend.position = "right"
-  )
-
-# Post-COVID plot
-p2b <- ggplot(plot_data, aes(x = accessibility_score_postcovid, 
-                              y = median_sale_price_postcovid / 1000,
-                              color = borough,
-                              size = mean_postcovid / 1000000)) +
-  geom_point(alpha = 0.7) +
-  geom_smooth(method = "lm", se = TRUE, color = "gray30", linetype = "dashed", linewidth = 0.8) +
-  annotate("text", x = Inf, y = Inf, 
-           label = paste0("R² = ", round(r2_post, 3)), 
-           hjust = 1.1, vjust = 1.5, size = 5, fontface = "bold", color = "gray20") +
-  scale_color_manual(values = borough_colors,
-                     labels = c("Manhattan", "Brooklyn", "Queens", "Bronx", "Staten Island")) +
-  scale_size_continuous(range = c(3, 12), 
-                        name = "Ridership\n(Millions)") +
-  labs(title = "Post-COVID (2021-2023)",
-       x = "Accessibility Score",
-       y = "Median Sale Price ($1000s)",
-       color = "Borough") +
-  theme_minimal(base_size = 12) +
-  theme(
-    plot.title = element_text(face = "bold", size = 14),
-    panel.grid.minor = element_blank(),
-    legend.position = "right",
-    subtitle = sprintf("Each point represents a community district"), 
-    plot.subtitle = element_text(size = 11, hjust = 0.5, color = "darkgray")
-  )
-
-grid.arrange(p2a, p2b, ncol = 2, 
-             top = grid::textGrob("Property Values vs Transit Accessibility (Normalized 0-100 Scale)",
-                                  gp = grid::gpar(fontsize = 16, fontface = "bold")))
-
-```
-
-```{r, fig.width=12, fig.height=8, dpi=300, warning=FALSE, message=FALSE}
-#| code-fold: true
-#| code-summary: "Show code"
-
-# ============================================================================
-# 3. RIDERSHIP vs HOUSING PRICES SCATTER (PRE & POST COVID)
-# ============================================================================
+#| code-summary: "Data Preparation for Ridership Plot"
 
 # Prepare data in the format needed for the plots
 precovid_combined <- plot_data |>
@@ -1314,6 +1197,20 @@ model_postcovid <- lm(median_sale_price ~ avg_ridership, data = postcovid_combin
 # Calculate R-squared values
 r2_precovid <- summary(model_precovid)$r.squared
 r2_postcovid <- summary(model_postcovid)$r.squared
+
+summary(model_precovid)
+summary(model_postcovid)
+```
+
+The scatterplot shows a positive association between transit ridership and property value, as shown by the positive slope. This translates to CDs with high total annual transit ridership tend to have higher property values. These results are in agreement with  [Glaeser et al.'s](https://www.nber.org/system/files/working_papers/w14806/w14806.pdf) findings, reflecting that people’s willingness to pay for more expensive property is driven by convenience and productivity. Moreover, the positive relationship observed was retained post-COVID; however, the explanatory power weakened slightly as R-squared dropped from 0.443 to 0.424. A potential leverage point encourages further analysis that might have disproportionately influenced the fitted line. Namely, triggered by CD MN05, with the highest average annual ridership pre-COVID and post-COVID.
+
+```{r, fig.width=12, fig.height=8, dpi=300, warning=FALSE, message=FALSE}
+#| code-fold: true
+#| code-summary: "Ridership vs Housing Price Scatterplots"
+
+# ============================================================================
+# 2. RIDERSHIP vs HOUSING PRICES SCATTER (PRE & POST COVID)
+# ============================================================================
 
 # Pre-COVID scatter plot with R-squared
 plot_precovid <- ggplot(precovid_combined, 
@@ -1377,7 +1274,7 @@ plot_postcovid <- ggplot(postcovid_combined,
 
 combined_scatter <- plot_precovid + plot_postcovid +
   plot_annotation(
-    title = "Transit Ridership is a Poor Predictor of Property Value",
+    title = "Transit Ridership is a Moderate Predictor of Property Value",
     subtitle = sprintf("Each point represents a community district"), 
     theme = theme(
       plot.title = element_text(face = "bold", size = 16, hjust = 0.5),
@@ -1385,7 +1282,125 @@ combined_scatter <- plot_precovid + plot_postcovid +
     )
   )
 print(combined_scatter)
-
 ```
-  
+
+### Accessibility Score Pre-COVID Linear Model
+```{r, echo=TRUE, message=FALSE, warning=FALSE}
+#| code-fold: true
+#| code-summary: "Show code"
+
+# Calculate R-squared for Pre-COVID
+accessibility_model_pre <- lm(median_sale_price_precovid ~ accessibility_score_precovid, 
+                data = plot_data |> st_drop_geometry())
+
+r2_pre <- summary(accessibility_model_pre)$r.squared
+
+# Coefficients table 
+accessibility_coef_tbl_pre <- tidy(accessibility_model_pre, conf.int = FALSE) %>%
+  mutate(p.value = signif(p.value, 3),
+         estimate = round(estimate, 1),
+         std.error = round(std.error, 1)) %>%
+  rename(Term = term,
+         Estimate = estimate,
+         `Std. Error` = std.error,
+         `p-value` = p.value)
+
+kable(accessibility_coef_tbl_pre)
+```
+
+### Accessibility Score Post-COVID Linear Model
+```{r, echo=TRUE, message=FALSE, warning=FALSE}
+#| code-fold: true
+#| code-summary: "Show code"
+
+# Calculate R-squared for Post-COVID
+accessibility_model_post <- lm(median_sale_price_postcovid ~ accessibility_score_postcovid, 
+                 data = plot_data|>st_drop_geometry())
+
+r2_post <- summary(accessibility_model_post)$r.squared
+
+# Coefficients table 
+accessibility_coef_tbl_post <- tidy(accessibility_model_post, conf.int = FALSE) %>%
+  mutate(p.value = signif(p.value, 3),
+         estimate = round(estimate, 1),
+         std.error = round(std.error, 1)) %>%
+  rename(Term = term,
+         Estimate = estimate,
+         `Std. Error` = std.error,
+         `p-value` = p.value)
+
+kable(accessibility_coef_tbl_post, caption = "Pre-COVID Linear Model")
+```
+
+Both linear models above show a significant relationship between accessibility score and housing prices, as both p-values were less than 0.001. However, uncertainty in the model persists with a moderate R-squared value, which also weakened post-COVID, dropping from 0.366 to 0.36. Once again, there appears to be high variance that is most prevalent on CDs in Manhattan (in green) and Brooklyn (in blue), dominating the high accessibility and high property values. Contrary to Queens (in purple), Bronx (in red), and Staten Island (in orange) with low accessibility and lower property values.
+```{r, fig.width=12, fig.height=8, dpi=300, warning=FALSE, message=FALSE}
+#| code-fold: true
+#| code-summary: "Show code"
+
+# ============================================================================
+# 3. ACCESSIBILITY vs HOUSING PRICES SCATTER
+# ============================================================================
+# Pre-COVID plot
+p2a <- ggplot(plot_data, aes(x = accessibility_score_precovid, 
+                              y = median_sale_price_precovid / 1000,
+                              color = borough,
+                              size = mean_precovid / 1000000)) +
+  geom_point(alpha = 0.7) +
+  geom_smooth(method = "lm", se = TRUE, color = "gray30", linetype = "dashed", linewidth = 0.8) +
+  annotate("text", x = Inf, y = Inf, 
+           label = paste0("R² = ", round(r2_pre, 3)), 
+           hjust = 1.1, vjust = 1.5, size = 5, fontface = "bold", color = "gray20") +
+  scale_color_manual(values = borough_colors) +
+  scale_size_continuous(range = c(3, 12), 
+                        name = "Ridership\n(Millions)") +
+  labs(title = "Pre-COVID (2017-2019)",
+       x = "Accessibility Score",
+       y = "Median Sale Price ($1000s)",
+       color = "Borough") +
+  theme_minimal(base_size = 12) +
+  theme(
+    plot.title = element_text(face = "bold", size = 14),
+    panel.grid.minor = element_blank(),
+    legend.position = "right"
+  )
+
+# Post-COVID plot
+p2b <- ggplot(plot_data, aes(x = accessibility_score_postcovid, 
+                              y = median_sale_price_postcovid / 1000,
+                              color = borough,
+                              size = mean_postcovid / 1000000)) +
+  geom_point(alpha = 0.7) +
+  geom_smooth(method = "lm", se = TRUE, color = "gray30", linetype = "dashed", linewidth = 0.8) +
+  annotate("text", x = Inf, y = Inf, 
+           label = paste0("R² = ", round(r2_post, 3)), 
+           hjust = 1.1, vjust = 1.5, size = 5, fontface = "bold", color = "gray20") +
+  scale_color_manual(values = borough_colors) +
+  scale_size_continuous(range = c(3, 12), 
+                        name = "Ridership\n(Millions)") +
+  labs(title = "Post-COVID (2021-2023)",
+       x = "Accessibility Score",
+       y = "Median Sale Price ($1000s)",
+       color = "Borough",
+       subtitle = "Each point represents a community district") +
+  theme_minimal(base_size = 12) +
+  theme(
+    plot.title = element_text(face = "bold", size = 14),
+    panel.grid.minor = element_blank(),
+    legend.position = "right",
+    plot.subtitle = element_text(size = 11, hjust = 0.5, color = "darkgray")
+  )
+
+grid.arrange(p2a, p2b, ncol = 2, 
+             top = grid::textGrob("Transit Accessibility Score is a Moderate Predictor of Property Value",
+                                  gp = grid::gpar(fontsize = 16, fontface = "bold")))
+```
+ 
+# CONCLUSION
+Now to address the specific question: did the relationship between transit accessibility, ridership levels, and property values change from pre-COVID and post-COVID across NYC’s Community Districts?
+
+Overall, the findings reveal that while transit ridership and accessibility remain statistically significant predictors of property values, their explanatory power weakened in the post-COVID period. This further suggests that observing transit trends alone is not a strong indicator of property values.
+
+[Click here to about the role transportation plays in reshaping the relationship between neighborhood characteristics and property values across NYC's 59 Community Districts.](https://tiffany-ngli.github.io/STA9750-2025-FALL/Summary%20Report.html)
+
+
 
