@@ -119,7 +119,9 @@ Initial analysis revealed a density gradient: lower-density districts averaged 1
 ![](Resident01)
 
 This aligns with Glaeser's work on agglomeration effects while complementing the NYC Comptroller's findings: recovery diverged through occupational sorting, not urban flight. See [Jonathan's](https://socoyjonathan.github.io/STA9750-2025-FALL/final_project.html) full analysis for details.
+
 # Integrating Findings: What Really Drove Post-COVID Changes?
+
 Did COVID-19 reshape the relationship between neighborhood characteristics and property values? 
 **Absolutely yes—but not in the ways initial observations suggested.**
 
