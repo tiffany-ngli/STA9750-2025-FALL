@@ -1,0 +1,1391 @@
+---
+title: "Transportation Accessibility & Ridership - Individual Report"
+author: Tiffany Ng Li
+---
+[Overarching Question](https://tiffany-ngli.github.io/STA9750-2025-FALL/Summary%20Report.html): Did COVID-19 reshape the relationship between neighborhood characteristics and property values across NYC's 59 Community Districts? 
+
+### SQ: Did the relationship between transit accessibility, ridership levels, and property values change from pre-COVID and post-COVID across NYC's Community Districts? 
+
+# INTRODUCTION
+```{r, echo=TRUE, results='hide', message=FALSE, warning=FALSE}
+#| code-fold: true
+#| code-summary: "Loading in Libraries"
+
+#LOADING LIBRARIES
+library(httr)
+library(readxl)
+library(dplyr)
+library(purrr)
+library(ggplot2)
+library(sf)
+library(lubridate)
+library(tmap)
+library(rmapshaper)
+library(kableExtra)
+library(leaflet)
+library(RColorBrewer)
+library(janitor)
+library(stringr)
+library(jsonlite)
+library(readr)
+library(glue)
+library(tidyr)
+library(scales)
+library(knitr)
+library(broom)
+library(kableExtra)
+library(DT)
+library(gridExtra) 
+library(patchwork)
+```
+
+# DATA SOURCES & RESEARCH OUTLINE
+Before we could begin any analysis, we needed to go on a scavenger hunt for data. The key feature to bear in mind is to be able to locate ridership back to community districts. The following linked data sources were used to complete this research, followed by the code used to read in csv files or webscrape the website for observations. To reiterate, the shared data sources to answer the Overarching Question were the shapefile for community districts and the rolling sales data for housing prices. Since we defined the pre-COVID era as 2017 to 2019 and the post-COVID era as 2018 to 2021, the functions also clean the observations accordingly.
+
+Initially, observing MTA subway ridership was not enough to cover all 59 community districts, which was necessary for the final stage of the multilinear regression model. Notably, the issue was that there are simply no subway stations running in Staten Island, so the Staten Island Railroad (SIR) was used in substitution to determine the ridership count for the three Staten Island community districts. Although a limitation of the SIR data was that it did not account for ridership per district. To address this, the total ridership per year was split evenly between the post-COVID years. As for pre-COVID, there was only data recorded for 2019, making the contributions of SIR ridership zero for the years 2017 and 2018. To make up for lost numbers and precision for ridership counts within each community district, MTA bus ridership was taken into account for a thorough assessment.
+
+
+### Community Districts & Housing Prices Data
+Housing sale prices were reported by NYC’s Department of Finance, located at the Borough, Block, Lot (BBL) level, which were each house to its corresponding CD through Pluto, and finally matched back to the CD shapefile for its boundaries.
+[59 Community Districts](https://www.nyc.gov/content/planning/pages/resources/datasets/community-districts)
+```{r, echo=TRUE, results='hide', message=FALSE, warning=FALSE}
+#| code-fold: true
+#| code-summary: "Community District Boundaries by CD IDs"
+
+get_nyc_cd <- function() {
+  rds_path <- "data_clean/nycd_25c.rds"
+
+  cd_url  <- "https://s-media.nyc.gov/agencies/dcp/assets/files/zip/data-tools/bytes/community-districts/nycd_25c.zip"
+  zip_path <- "data_raw/nycd_25c.zip"
+  dir_out <- "data_raw/nycd_25c"
+
+  if (!dir.exists("data_raw"))  dir.create("data_raw", recursive = TRUE)
+  if (!dir.exists("data_clean")) dir.create("data_clean", recursive = TRUE)
+
+  if (!dir.exists(dir_out)) {
+    unzip(zip_path, exdir = dir_out)
+  }
+
+  shp_path <- list.files(dir_out, pattern = "\\.shp$", full.names = TRUE, recursive = TRUE)[1]
+
+  cd_sf <- st_read(shp_path, quiet = TRUE) |>
+    st_transform("EPSG:2263") |>
+    mutate(
+      boro_cd = as.integer(BoroCD),
+      boro_num = substr(sprintf("%03d", boro_cd), 1, 1),
+      boro_abbr = case_when(
+        boro_num == "1" ~ "MN",
+        boro_num == "2" ~ "BX",
+        boro_num == "3" ~ "BK",
+        boro_num == "4" ~ "QN",
+        boro_num == "5" ~ "SI",
+        TRUE ~ NA_character_
+      ),
+      cd_num = sprintf("%02d", boro_cd %% 100),
+      cd_id = paste0(boro_abbr, cd_num)
+    ) |>
+    filter(as.integer(cd_num) <= 18) # Keep only 59 standard CDs
+
+  saveRDS(cd_sf, rds_path)
+  cd_sf
+}
+
+nyc_cd <- get_nyc_cd()
+```
+
+[Pluto](https://www.nyc.gov/content/planning/pages/resources/datasets/mappluto-pluto-change)
+```{r, echo=TRUE, results='hide', message=FALSE, warning=FALSE}
+#| code-fold: true
+#| code-summary: "Links CD IDs to BBLs"
+
+get_pluto_cd_crosswalk <- function() {
+  rds_path <- "data_clean/pluto_cd_crosswalk.rds"
+
+
+  if (!dir.exists("data_clean")) dir.create("data_clean", recursive = TRUE)
+
+  pluto_url <- "https://data.cityofnewyork.us/resource/64uk-42ks.csv?$select=bbl,cd&$limit=5000000"
+
+  pluto_raw <- read_csv(
+    pluto_url,
+    col_types = cols(bbl = col_character(), cd = col_character()),
+    show_col_types = FALSE
+  )
+
+  pluto_xwalk <- pluto_raw |>
+    filter(!is.na(cd), cd != "0", cd != "99") |>
+    mutate(
+      bbl = str_replace(bbl, "\\.0+$", ""),
+      boro_cd = as.integer(cd)
+    ) |>
+    filter(nchar(bbl) == 10) |>
+    select(bbl, boro_cd)
+
+  cd_lookup <- get_nyc_cd() |>
+    st_drop_geometry() |>
+    select(boro_cd, cd_id) |>
+    distinct()
+
+  crosswalk <- pluto_xwalk |>
+    left_join(cd_lookup, by = "boro_cd") |>
+    filter(!is.na(cd_id)) |>
+    distinct(bbl, cd_id, boro_cd)
+
+  # SANITY CHECK #2: Crosswalk coverage
+  n_cds_in_xwalk <- n_distinct(crosswalk$cd_id)
+  if (n_cds_in_xwalk != 59) {
+    warning(" SANITY CHECK WARNING: PLUTO crosswalk covers ", n_cds_in_xwalk, " CDs (expected 59)")
+  } else {
+    message("✓ SANITY CHECK PASSED: PLUTO crosswalk covers all 59 CDs")
+  }
+
+  saveRDS(crosswalk, rds_path)
+  crosswalk
+}
+
+# pluto_xwalk <- get_pluto_cd_crosswalk()
+```
+
+[NYC Annual Property Value Sales Data](https://www.nyc.gov/site/finance/about/open-portal.page)
+```{r, echo=TRUE, results='hide', message=FALSE, warning=FALSE}
+#| code-fold: true
+#| code-summary: "Housing Prices by BBLs"
+
+get_dof_sales_year_boro <- function(year, borough_name) {
+  cache_file <- glue("data_clean/dof_{year}_{borough_name}.rds")
+
+  if (file.exists(cache_file)) {
+    return(readRDS(cache_file))
+  }
+
+  valid_boroughs <- c("manhattan", "bronx", "brooklyn", "queens", "staten_island")
+  if (!borough_name %in% valid_boroughs) {
+    stop("Invalid borough: ", borough_name)
+  }
+
+  base_url <- "https://www.nyc.gov/assets/finance/downloads/pdf/rolling_sales/annualized-sales"
+  ext <- if (year == 2017) "xls" else "xlsx"
+
+  slug_primary <- if (borough_name == "staten_island") "staten_island" else borough_name
+  slug_alt <- if (borough_name == "staten_island") "statenisland" else borough_name
+
+  url_primary <- glue("{base_url}/{year}/{year}_{slug_primary}.{ext}")
+  url_alt <- if (slug_alt != slug_primary) glue("{base_url}/{year}/{year}_{slug_alt}.{ext}") else NA_character_
+
+  if (!dir.exists("data_raw")) dir.create("data_raw", recursive = TRUE)
+  file_path <- glue("data_raw/dof_sales_{year}_{borough_name}.{ext}")
+
+  if (!file.exists(file_path)) {
+    download_ok <- FALSE
+
+    try({
+      download.file(url_primary, file_path, mode = "wb", quiet = TRUE)
+      download_ok <- TRUE
+    }, silent = TRUE)
+
+    if (!download_ok && !is.na(url_alt)) {
+      try({
+        download.file(url_alt, file_path, mode = "wb", quiet = TRUE)
+        download_ok <- TRUE
+      }, silent = TRUE)
+    }
+
+    if (!download_ok) {
+      warning("Failed to download: ", year, " ", borough_name)
+      return(NULL)
+    }
+  }
+
+  preview <- read_excel(file_path, col_names = FALSE, n_max = 20)
+  header_row <- which(apply(preview, 1, function(x) any(grepl("BOROUGH", x, ignore.case = TRUE))))
+
+  if (length(header_row) == 0) {
+    warning("Could not detect header: ", year, " ", borough_name)
+    return(NULL)
+  }
+
+  skip_rows <- header_row[1] - 1
+
+  raw_sales <- suppressWarnings(read_excel(file_path, skip = skip_rows)) |>
+    clean_names()
+
+  if (nrow(raw_sales) == 0L) {
+    warning("No data rows: ", year, " ", borough_name)
+    return(NULL)
+  }
+
+  required_cols <- c("borough", "block", "lot", "sale_price", "sale_date")
+  missing_cols <- setdiff(required_cols, names(raw_sales))
+
+  if (length(missing_cols) > 0) {
+    warning("Missing columns: ", paste(missing_cols, collapse = ", "))
+    return(NULL)
+  }
+
+  sales_clean <- raw_sales |>
+    mutate(
+      block = suppressWarnings(as.integer(block)),
+      lot = suppressWarnings(as.integer(lot)),
+      sale_price = suppressWarnings(as.numeric(sale_price)),
+      gross_square_feet = suppressWarnings(as.numeric(gross_square_feet)),
+
+      sale_date = suppressWarnings(case_when(
+        inherits(sale_date, c("Date", "POSIXct", "POSIXt")) ~ as.Date(sale_date),
+        is.numeric(sale_date) ~ as.Date(sale_date, origin = "1899-12-30"),
+        is.character(sale_date) ~ mdy(sale_date),
+        TRUE ~ as.Date(NA)
+      )),
+
+      borough_code = case_when(
+        borough_name == "manhattan" ~ "1",
+        borough_name == "bronx"  ~ "2",
+        borough_name == "brooklyn" ~ "3",
+        borough_name == "queens" ~ "4",
+        borough_name == "staten_island" ~ "5"
+      ),
+
+      bbl = paste0(
+        borough_code,
+        str_pad(block, 5, pad = "0"),
+        str_pad(lot, 4, pad = "0")
+      )
+    )
+
+  tax_class_candidates <- c(
+    "tax_class_at_time_of_sale",
+    "tax_class_at_present",
+    "tax_class_at_time_of_sale_2",
+    "tax_class"
+  )
+
+  tax_class_col <- tax_class_candidates[tax_class_candidates %in% names(sales_clean)][1]
+
+  if (is.na(tax_class_col)) {
+    warning("No tax_class column: ", year, " ", borough_name)
+    return(NULL)
+  }
+
+  sales_clean <- sales_clean |>
+    mutate(tax_class = str_trim(as.character(.data[[tax_class_col]])))
+
+  sales_clean <- sales_clean |>
+    filter(
+      !is.na(bbl),
+      !is.na(sale_price),
+      sale_price >= 10000,
+      !is.na(sale_date),
+      !is.na(tax_class),
+      tax_class %in% c("1", "2", "2A", "2B", "2C")
+    ) |>
+    select(bbl, sale_price, sale_date, gross_square_feet, tax_class, borough_code, block, lot)
+
+  if (!dir.exists("data_clean")) dir.create("data_clean", recursive = TRUE)
+  saveRDS(sales_clean, cache_file)
+
+  sales_clean
+}
+```
+
+```{r, echo=TRUE, results='hide', message=FALSE, warning=FALSE}
+#| code-fold: true
+#| code-summary: "Joining Housing Prices to CDs"
+
+build_cd_sales_panel <- function(pre_years = 2017:2019, post_years = 2021:2023, pluto_xwalk = NULL) {
+  
+  if (is.null(pluto_xwalk)) {
+    pluto_xwalk <- get_pluto_cd_crosswalk()
+  }
+  
+  boroughs <- c("bronx", "brooklyn", "manhattan", "queens", "staten_island")
+  
+  # Create combinations for ALL years
+  combos <- expand_grid(
+    year = c(pre_years, post_years),
+    borough = boroughs
+  ) |>
+    arrange(year, borough)
+  
+  # Download all sales data
+  sales_list <- vector("list", nrow(combos))
+  for (i in seq_len(nrow(combos))) {
+    yr <- combos$year[i]
+    bo <- combos$borough[i]
+    
+    sales <- get_dof_sales_year_boro(yr, bo)
+    
+    if (!is.null(sales) && nrow(sales) > 0L) {
+      sales_list[[i]] <- sales |>
+        mutate(year = yr, borough = bo)
+    }
+  }
+  
+  all_sales <- bind_rows(sales_list)
+  
+  # Exact BBL match
+  sales_matched_exact <- all_sales |>
+    inner_join(pluto_xwalk, by = "bbl")
+  
+  n_exact <- nrow(sales_matched_exact)
+  
+  # Block-level matching for unmatched sales
+  sales_unmatched <- all_sales |>
+    anti_join(pluto_xwalk, by = "bbl")
+  
+  if (nrow(sales_unmatched) > 0) {
+    pluto_block_lookup <- pluto_xwalk |>
+      mutate(
+        block = as.integer(substr(bbl, 2, 6)),
+        boro_digit = substr(bbl, 1, 1)
+      ) |>
+      count(boro_digit, block, cd_id, boro_cd) |>
+      group_by(boro_digit, block) |>
+      slice_max(n, n = 1, with_ties = FALSE) |>
+      ungroup() |>
+      select(boro_digit, block, cd_id, boro_cd)
+    
+    sales_matched_block <- sales_unmatched |>
+      mutate(boro_digit = substr(bbl, 1, 1)) |>
+      inner_join(pluto_block_lookup, by = c("boro_digit", "block")) |>
+      select(-boro_digit)
+    
+    n_block <- nrow(sales_matched_block)
+    sales_with_cd <- bind_rows(sales_matched_exact, sales_matched_block)
+  } else {
+    sales_with_cd <- sales_matched_exact
+    n_block <- 0
+  }
+  
+  # Create period labels
+  sales_with_cd <- sales_with_cd |>
+    mutate(
+      period = case_when(
+        year %in% pre_years ~ "pre_covid",
+        year %in% post_years ~ "post_covid",
+        TRUE ~ NA_character_
+      )
+    ) |>
+    filter(!is.na(period))
+  
+  # Calculate median price per CD per period (aggregating across all years in period)
+  cd_panel <- sales_with_cd |>
+    group_by(cd_id, boro_cd, period) |>
+    summarise(
+      sales = n(),
+      median_price = median(sale_price, na.rm = TRUE),
+      mean_price = mean(sale_price, na.rm = TRUE),
+      .groups = "drop"
+    ) |>
+    pivot_wider(
+      id_cols = c(cd_id, boro_cd),
+      names_from = period,
+      values_from = c(sales, median_price, mean_price),
+      names_glue = "{.value}_{period}"
+    ) |>
+    rename(
+      median_sale_price_precovid = median_price_pre_covid,
+      median_sale_price_postcovid = median_price_post_covid,
+      mean_sale_price_precovid = mean_price_pre_covid,
+      mean_sale_price_postcovid = mean_price_post_covid
+    ) |>
+    select(
+      cd_id,
+      boro_cd,
+      sales_pre_covid,
+      median_sale_price_precovid,
+      mean_sale_price_precovid,
+      sales_post_covid,
+      median_sale_price_postcovid,
+      mean_sale_price_postcovid
+    )
+  
+  # Statistics
+  total_sales_all_files <- nrow(all_sales)
+  total_sales_matched <- n_exact + n_block
+  overall_match_rate <- total_sales_matched / total_sales_all_files
+  
+  cd_panel
+}
+
+cd_sales <- build_cd_sales_panel(
+  pre_years = 2017:2019,
+  post_years = 2021:2023
+)
+```
+
+### Ridership Data
+To summarize, the means of transportation observed include Subways, Buses, and the Staten Island Railroad, all of which are supported by the MTA. In addition to accounting for the ridership at each station, these stations were then located to their corresponding CD through its longitude and latitude coordinates.
+
+[Pre-COVID Subway Ridership](https://www.nyc.gov/site/finance/about/open-portal.page)
+```{r, echo=TRUE, results='hide', message=FALSE, warning=FALSE}
+#| code-fold: true
+#| code-summary: "Subway Ridership - (2017-2019)"
+
+subway_annual_data_2017_2022 <- function(save_file = FALSE, file_path = "mta_ridership.xlsx") {
+  # URL of the MTA Excel file
+  url <- "https://www.mta.info/document/113331"
+  
+  # Create a temporary file to store the download
+  temp_file <- tempfile(fileext = ".xlsx")
+  
+  # Download the file
+  response <- GET(url, write_disk(temp_file, overwrite = TRUE))
+  
+  
+  # Get all sheet names
+  sheet_names <- excel_sheets(temp_file)
+  
+  # Find the sheet with "annual" and "total" in the name (case-insensitive)
+  annual_sheet <- grep("annual.*total|total.*annual", sheet_names, 
+                       ignore.case = TRUE, value = TRUE)
+  
+  if (length(annual_sheet) == 0) {
+    stop("Could not find 'annual total' sheet. Available sheets: ", 
+         paste(sheet_names, collapse = ", "))
+  }
+  
+  # Use the first match if multiple sheets found
+  annual_sheet <- annual_sheet[1]
+  
+  # Read the data from the annual total sheet
+  data <- read_excel(temp_file, sheet = annual_sheet, skip=1)
+  
+  #clean data 
+  data <- data |>
+    clean_names() |>
+  rename_with(~ str_remove(., "^x(?=\\d{4})"), .cols = starts_with("x")) |>
+  mutate(
+    station_name = str_trim(sub(" \\(.*$", "", `station_alphabetical_by_borough`))
+  ) |>
+  filter(!station_alphabetical_by_borough %in% c("The Bronx", "Brooklyn", "Manhattan", "Queens", "Staten Island")) |>
+  select(station_name, station_alphabetical_by_borough, boro, `2017`, `2018`, `2019`) |>
+  filter(!is.na(boro))
+  
+  return(data)
+}
+
+precovid_subway_ridership <- subway_annual_data_2017_2022()
+```
+
+[Post-COVID Subway Ridership](https://www.mta.info/agency/new-york-city-transit/subway-bus-ridership-2023)
+```{r, echo=TRUE, results='hide', message=FALSE, warning=FALSE}
+#| code-fold: true
+#| code-summary: "Subway Ridership - (2021-2023)"
+
+subway_annual_data_2018_2023 <- function(save_file = FALSE, file_path = "mta_ridership.xlsx") {
+  # URL of the MTA Excel file
+  url <- "https://www.mta.info/document/137106"
+  
+  # Create a temporary file to store the download
+  temp_file <- tempfile(fileext = ".xlsx")
+  
+  # Download the file
+  response <- GET(url, write_disk(temp_file, overwrite = TRUE))
+  
+  
+  # Get all sheet names
+  sheet_names <- excel_sheets(temp_file)
+  
+  # Find the sheet with "annual" and "total" in the name (case-insensitive)
+  annual_sheet <- grep("annual.*total|total.*annual", sheet_names, 
+                       ignore.case = TRUE, value = TRUE)
+  
+  
+  # Use the first match if multiple sheets found
+  annual_sheet <- annual_sheet[1]
+  
+  # Read the data from the annual total sheet
+  data <- read_excel(temp_file, sheet = annual_sheet, skip=1)
+  
+  #clean data 
+  data <- data |>
+    clean_names() |>
+  rename_with(~ str_remove(., "^x(?=\\d{4})"), .cols = starts_with("x")) |>
+  mutate(
+    station_name = str_trim(sub(" \\(.*$", "", `station_alphabetical_by_borough`))
+  ) |>
+  filter(!station_alphabetical_by_borough %in% c("The Bronx", "Brooklyn", "Manhattan", "Queens", "Staten Island")) |>
+  select(station_name, station_alphabetical_by_borough, boro, `2021`, `2022`, `2023`) |>
+  filter(!is.na(boro))
+  
+  return(data)
+}
+
+postcovid_subway_ridership <- subway_annual_data_2018_2023()
+```
+
+[MTA Subway Station Geompoints](https://data.ny.gov/Transportation/MTA-Subway-Stations/39hk-dx4f/about_data)
+```{r, echo=TRUE, results='hide', message=FALSE, warning=FALSE}
+#| code-fold: true
+#| code-summary: "Subway Station - Coordinates"
+
+get_mta_subway_stations <- function() {
+  library(data.table)
+  library(dplyr)
+  library(sf)
+  
+  # URL for MTA subway stations
+  url <- "https://data.ny.gov/api/views/39hk-dx4f/rows.csv?accessType=DOWNLOAD"
+  
+  # Read data directly into df
+  df <- fread(url)
+  
+  # Convert Georeference to sf geometry
+  df_sf <- df |>
+    mutate(geometry = st_as_sfc(Georeference, crs = 4326)) |>
+    st_as_sf(sf_column_name = "geometry") |>
+    mutate(
+      longitude = st_coordinates(geometry)[, "X"],
+      latitude  = st_coordinates(geometry)[, "Y"]
+    ) |>
+    select(`Stop Name`, geometry)
+  
+  # Transform CRS to match NYC (EPSG 2263 is commonly used for NYC local coordinates)
+  df_sf <- st_transform(df_sf, crs = 2263)
+  
+  return(df_sf)
+}
+
+
+stations <- get_mta_subway_stations()
+```
+
+[Pre-COVID Bus Ridership](https://www.mta.info/agency/new-york-city-transit/subway-bus-ridership-2022)
+```{r, echo=TRUE, results='hide', message=FALSE, warning=FALSE}
+#| code-fold: true
+#| code-summary: "Bus Ridership - (2017-2019)"
+
+bus_annual_data_2017_2022 <- function(save_file = FALSE, file_path = "mta_ridership.xlsx") {
+  # URL of the MTA Excel file
+  url <- "https://www.mta.info/document/113336"
+  
+  # Create a temporary file to store the download
+  temp_file <- tempfile(fileext = ".xlsx")
+  
+  # Download the file
+  response <- GET(url, write_disk(temp_file, overwrite = TRUE))
+  
+  # Get all sheet names
+  sheet_names <- excel_sheets(temp_file)
+  
+  # Find the sheet with "annual" and "total" in the name (case-insensitive)
+  annual_sheet <- grep("*total|total", sheet_names, 
+                       ignore.case = TRUE, value = TRUE)
+  
+  if (length(annual_sheet) == 0) {
+    stop("Could not find 'annual total' sheet. Available sheets: ", 
+         paste(sheet_names, collapse = ", "))
+  }
+  
+  # Use the first match if multiple sheets found
+  annual_sheet <- annual_sheet[1]
+  
+  # Read the data from the annual total sheet
+  data <- read_excel(temp_file, sheet = annual_sheet, skip=1)
+  
+  #clean data 
+  data <- data |>
+    filter(!is.na(2017)) |>
+    filter(!str_detect(Route, " ")) |>
+    select(-matches("^\\.\\.\\."), -any_of("*")) |>
+    mutate(across(matches("^20\\d{2}$"), ~ as.numeric(str_replace_all(., ",", "")))) |>
+    mutate(
+      Route = if_else(str_starts(Route, "X"),
+                      str_replace(Route, "^X", "SIM"),
+                      Route)
+    ) |>
+    group_by(Route) |>
+    summarise(
+      across(matches("^20\\d{2}$"), ~ sum(., na.rm = TRUE)),
+      .groups = "drop"
+    ) |>
+    mutate(Route = str_extract(Route, "^[A-Za-z]+[0-9]+")) |>
+    select(Route, "2017", "2018", "2019") |>
+    filter(Route != "Adjustments")
+  
+  # Clean up temp file
+  unlink(temp_file)
+  
+  return(data)
+}
+
+precovid_bus_ridership <- bus_annual_data_2017_2022()
+```
+
+[Post-COVID Bus Ridership](https://www.mta.info/agency/new-york-city-transit/subway-bus-ridership-2022)
+```{r, echo=TRUE, results='hide', message=FALSE, warning=FALSE}
+#| code-fold: true
+#| code-summary: "Bus Ridership - (2021-2023)"
+
+bus_annual_data_2018_2023 <- function(save_file = FALSE, file_path = "mta_ridership.xlsx") {
+  # URL of the MTA Excel file
+  url <- "https://www.mta.info/document/137111"
+  
+  # Create a temporary file to store the download
+  temp_file <- tempfile(fileext = ".xlsx")
+  
+  response <- GET(url, write_disk(temp_file, overwrite = TRUE))
+  
+  # Get all sheet names
+  sheet_names <- excel_sheets(temp_file)
+  
+  # Find the sheet with "annual" and "total" in the name (case-insensitive)
+  annual_sheet <- grep("*total|total", sheet_names, 
+                       ignore.case = TRUE, value = TRUE)
+  
+  if (length(annual_sheet) == 0) {
+    stop("Could not find 'annual total' sheet. Available sheets: ", 
+         paste(sheet_names, collapse = ", "))
+  }
+  
+  # Use the first match if multiple sheets found
+  annual_sheet <- annual_sheet[1]
+  
+  # Read the data from the annual total sheet
+  data <- read_excel(temp_file, sheet = annual_sheet, skip=1)
+  
+  #clean data 
+  data <- data |>
+    filter(!is.na(2017)) |>
+    filter(!str_detect(Route, " ")) |>
+    select(-matches("^\\.\\.\\."), -any_of("*")) |>
+    mutate(across(matches("^20\\d{2}$"), ~ as.numeric(str_replace_all(., ",", "")))) |>
+    mutate(
+      Route = if_else(str_starts(Route, "X"),
+                      str_replace(Route, "^X", "SIM"),
+                      Route)
+    ) |>
+    group_by(Route) |>
+    summarise(
+      across(matches("^20\\d{2}$"), ~ sum(., na.rm = TRUE)),
+      .groups = "drop"
+    ) |> 
+    mutate(Route = str_extract(Route, "^[A-Za-z]+[0-9]+")) |>
+    select(Route,"2021", "2022", "2023") |>
+    filter(Route != "Adjustments") 
+    
+  # Clean up temp file
+  unlink(temp_file)
+  
+  return(data)
+}
+
+postcovid_bus_ridership <- bus_annual_data_2018_2023()
+```
+
+[Bus Stops by Routes](https://github.com/miranda-adams/NYC-bus-stops-by-route/blob/master/bus_stops_gis.csv)
+```{r, echo=TRUE, results='hide', message=FALSE, warning=FALSE}
+#| code-fold: true
+#| code-summary: "Bus Stop - Coordinates"
+
+bus_stops_geompoints <- function() {
+  
+  url <- "https://raw.githubusercontent.com/miranda-adams/NYC-bus-stops-by-route/master/bus_stops_gis.csv"
+  
+  cat("Reading bus stops data from GitHub...\n")
+  
+  data <- read.csv(url, stringsAsFactors = FALSE)
+  
+  return(data)
+}
+
+bus_stops <- bus_stops_geompoints()
+```
+
+[Bus Routes by Community Districts](https://data.cityofnewyork.us/Transportation/Bus-Stop-Shelters/qafz-7myz)
+```{r, echo=TRUE, results='hide', message=FALSE, warning=FALSE}
+#| code-fold: true
+#| code-summary: "Bus Routes - CDs"
+
+url <- "https://data.cityofnewyork.us/resource/qafz-7myz.csv"
+
+bus_stop_shelters <- read_csv(
+  url,
+  show_col_types = FALSE
+)
+```
+
+[Staten Island Railroad Ridership Pre-COVID Ridership](https://catalog.data.gov/dataset/mta-monthly-ridership-traffic-data-beginning-january-2008?)
+```{r, echo=TRUE, results='hide', message=FALSE, warning=FALSE}
+#| code-fold: true
+#| code-summary: "SIR Ridership - (2017-2019)"
+
+get_sir_ridership_precovid <- function() {
+
+  url <- "https://data.ny.gov/api/views/xfre-bxip/rows.csv?accessType=DOWNLOAD"
+  temp <- tempfile(fileext = ".csv")
+  
+  download.file(url, temp, mode = "wb")
+  
+  df <- read_csv(temp, show_col_types = FALSE)
+  
+  df <- df |>
+    mutate(
+      Month = as.Date(Month),
+      year = lubridate::year(Month)
+    ) |>
+    filter(
+      year %in% c(2017, 2018, 2019),
+      Agency == "SIR"
+    ) |>
+    summarize(
+      total_ridership_2017 = sum(Ridership[year == 2017], na.rm = TRUE),
+      total_ridership_2018 = sum(Ridership[year == 2018], na.rm = TRUE),
+      total_ridership_2019 = sum(Ridership[year == 2019], na.rm = TRUE),
+      mean_pre_covid = mean(Ridership, na.rm = TRUE)
+    )
+  
+  return(df)
+}
+```
+
+[Staten Island Ridership Post-COVID Ridership](https://data.ny.gov/Transportation/MTA-Daily-Ridership-Data-2020-2025/vxuj-8kew/about_data)
+```{r, echo=TRUE, results='hide', message=FALSE, warning=FALSE}
+#| code-fold: true
+#| code-summary: "SIR Ridership - (2021-2023)"
+
+get_sir_ridership_postcovid <- function(
+  url = "https://data.ny.gov/api/views/vxuj-8kew/rows.csv?accessType=DOWNLOAD",
+  timeout_sec = 300
+) {
+  # Ensure required package
+  if (!requireNamespace("data.table", quietly = TRUE)) {
+    install.packages("data.table")
+  }
+  library(data.table)
+  
+  # Set extended timeout for download
+  options(timeout = timeout_sec)
+  
+  # Download to temp file
+  tmp_file <- tempfile(fileext = ".csv")
+  download.file(url, tmp_file, mode = "wb")
+  
+  # Read efficiently
+  df <- fread(tmp_file)
+  
+  #CLEAN DATA
+  df <- df |>
+    mutate(Date = as.Date(Date, format = "%m/%d/%Y"), year = year(Date)) |>
+    filter(year %in% c(2021, 2022, 2023)) |>
+    rename(sir_total_estimated_ridership = `Staten Island Railway: Total Estimated Ridership`) |>
+    summarize(
+      total_ridership_2021 = sum(sir_total_estimated_ridership[year == 2021], na.rm = TRUE),
+      total_ridership_2022 = sum(sir_total_estimated_ridership[year == 2022], na.rm = TRUE),
+      total_ridership_2023 = sum(sir_total_estimated_ridership[year == 2023], na.rm = TRUE),
+      mean_post_covid = mean(sir_total_estimated_ridership)
+    )
+
+  return(df)
+}
+
+sir_precovid <-get_sir_ridership_precovid()
+sir_postcovid <- get_sir_ridership_postcovid()
+
+sir_summary <- bind_cols(
+  sir_precovid,
+  sir_postcovid
+)
+
+```
+
+# MERGING ALL DATA TABLES
+With so many data tables to keep track of, a relation diagram was created to depict joining keys. For the end result, we expect there to be 59 rows, one for each community district. Key observations will be reported as columns, corresponding to each community district as rows. 
+
+Note: Due to the limitation involving SIR ridership data, which are not differentiated by community district, it was not included in the relation diagram. To account for the ridership, the estimations were simply summed to the corresponding total ridership year. 
+
+### Relation Diagram
+![](Report_Relation_Diagram.png)
+```{r, echo=TRUE, results='hide', message=FALSE, warning=FALSE}
+#| code-fold: true
+#| code-summary: "Joining Ridership and Housing Prices by CDs"
+
+join_cd_transit_ridership <- function(
+  nyc_cd,
+  precovid_subway_ridership,
+  postcovid_subway_ridership,
+  stations,
+  precovid_bus_ridership,
+  postcovid_bus_ridership,
+  bus_stops,
+  bus_stop_shelters,
+  sir_precovid,
+  sir_postcovid,
+  cd_sales_panel 
+) {
+  
+  # Calculate area in square miles for each CD
+  cd_areas <- nyc_cd |>
+    mutate(area_sq_miles = as.numeric(st_area(geometry)) / 27878400) |>  # Convert sq feet to sq miles
+    st_drop_geometry() |>
+    select(cd_id, area_sq_miles)
+  
+  # 1. PROCESS SUBWAY RIDERSHIP BY COMMUNITY DISTRICT
+  # Join stations to community districts spatially
+  stations_cd <- st_join(stations, nyc_cd, left = FALSE) |>
+    st_drop_geometry()
+  
+  # Count subway stations per CD
+  subway_station_counts <- stations_cd |>
+    group_by(cd_id) |>
+    summarise(subway_stations = n_distinct(`Stop Name`), .groups = "drop")
+  
+  # Pivot subway ridership data to long format and join
+  subway_pre <- precovid_subway_ridership |>
+    select(station_name, `2017`, `2018`, `2019`) |>
+    pivot_longer(cols = c(`2017`, `2018`, `2019`), 
+                 names_to = "year", 
+                 values_to = "ridership") |>
+    mutate(ridership = as.numeric(ridership))
+  
+  subway_post <- postcovid_subway_ridership |>
+    select(station_name, `2021`, `2022`, `2023`) |>
+    pivot_longer(cols = c(`2021`, `2022`, `2023`), 
+                 names_to = "year", 
+                 values_to = "ridership") |>
+    mutate(ridership = as.numeric(ridership))
+  
+  # Aggregate subway ridership by CD
+  subway_by_cd_pre <- stations_cd |>
+    left_join(subway_pre, by = c("Stop Name" = "station_name")) |>
+    group_by(cd_id, year) |>
+    summarise(subway_ridership = sum(ridership, na.rm = TRUE), .groups = "drop") |>
+    pivot_wider(names_from = year, 
+                values_from = subway_ridership,
+                names_prefix = "subway_")
+  
+  subway_by_cd_post <- stations_cd |>
+    left_join(subway_post, by = c("Stop Name" = "station_name")) |>
+    group_by(cd_id, year) |>
+    summarise(subway_ridership = sum(ridership, na.rm = TRUE), .groups = "drop") |>
+    pivot_wider(names_from = year, 
+                values_from = subway_ridership,
+                names_prefix = "subway_")
+  
+  # 2. PROCESS BUS RIDERSHIP BY COMMUNITY DISTRICT
+  # Create bus stops sf object
+  bus_stops_sf <- bus_stops |>
+    filter(!is.na(stop_lat) & !is.na(stop_lon)) |>
+    st_as_sf(coords = c("stop_lon", "stop_lat"), crs = 4326) |>
+    st_transform(2263)
+  
+  # Join bus stops to community districts
+  bus_stops_cd <- st_join(bus_stops_sf, nyc_cd, left = FALSE) |>
+    st_drop_geometry()
+  
+  # Count bus stops per CD
+  # Use n() since each row is a unique bus stop location
+  bus_stop_counts <- bus_stops_cd |>
+    group_by(cd_id) |>
+    summarise(bus_stops = n(), .groups = "drop")
+  
+  # Process bus ridership data
+  bus_pre <- precovid_bus_ridership |>
+    pivot_longer(cols = c(`2017`, `2018`, `2019`), 
+                 names_to = "year", 
+                 values_to = "ridership")
+  
+  bus_post <- postcovid_bus_ridership |>
+    pivot_longer(cols = c(`2021`, `2022`, `2023`), 
+                 names_to = "year", 
+                 values_to = "ridership")
+  
+  # Aggregate bus ridership by CD (using route assignments)
+  bus_by_cd_pre <- bus_stops_cd |>
+    left_join(bus_pre, by = c("route_id" = "Route")) |>
+    group_by(cd_id, year) |>
+    summarise(bus_ridership = sum(ridership, na.rm = TRUE) / n_distinct(route_id), 
+              .groups = "drop") |>
+    pivot_wider(names_from = year, 
+                values_from = bus_ridership,
+                names_prefix = "bus_")
+  
+  bus_by_cd_post <- bus_stops_cd |>
+    left_join(bus_post, by = c("route_id" = "Route")) |>
+    group_by(cd_id, year) |>
+    summarise(bus_ridership = sum(ridership, na.rm = TRUE) / n_distinct(route_id), 
+              .groups = "drop") |>
+    pivot_wider(names_from = year, 
+                values_from = bus_ridership,
+                names_prefix = "bus_")
+  
+  # 3. COMBINE ALL TRANSIT MODES BY COMMUNITY DISTRICT
+  cd_transit <- nyc_cd |>
+    st_drop_geometry() |>
+    select(cd_id, boro_abbr) |>
+    left_join(cd_areas, by = "cd_id") |>
+    left_join(subway_station_counts, by = "cd_id") |>
+    left_join(bus_stop_counts, by = "cd_id") |>
+    left_join(subway_by_cd_pre, by = "cd_id") |>
+    left_join(subway_by_cd_post, by = "cd_id") |>
+    left_join(bus_by_cd_pre, by = "cd_id") |>
+    left_join(bus_by_cd_post, by = "cd_id") |>
+    mutate(across(starts_with(c("subway_", "bus_")), ~replace_na(., 0)),
+           subway_stations = replace_na(subway_stations, 0),
+           bus_stops = replace_na(bus_stops, 0))
+  
+  # 4. ADD STATEN ISLAND RAILROAD (only for Staten Island CDs)
+  sir_total_pre <- sir_precovid |>
+    select(total_ridership_2017, total_ridership_2018, total_ridership_2019)
+  
+  sir_total_post <- sir_postcovid |>
+    select(total_ridership_2021, total_ridership_2022, total_ridership_2023)
+  
+  # Count Staten Island CDs
+  si_cd_count <- sum(cd_transit$boro_abbr == "SI")
+  
+  # Distribute SIR ridership equally across Staten Island CDs
+  cd_transit <- cd_transit |>
+    mutate(
+      sir_2017 = if_else(boro_abbr == "SI", sir_total_pre$total_ridership_2017, 0),
+      sir_2018 = if_else(boro_abbr == "SI", sir_total_pre$total_ridership_2018, 0),
+      sir_2019 = if_else(boro_abbr == "SI", sir_total_pre$total_ridership_2019, 0),
+      sir_2021 = if_else(boro_abbr == "SI", sir_total_post$total_ridership_2021 / si_cd_count, 0),
+      sir_2022 = if_else(boro_abbr == "SI", sir_total_post$total_ridership_2022 / si_cd_count, 0),
+      sir_2023 = if_else(boro_abbr == "SI", sir_total_post$total_ridership_2023 / si_cd_count, 0)
+    )
+  
+  # 5. JOINING SALES DATA
+  cd_transit <- cd_transit |>
+    left_join(
+      cd_sales_panel |> select(cd_id, starts_with("median_sale_price"), starts_with("sales")),
+      by = "cd_id"
+    )
+  
+  
+  # 6. CALCULATE TOTAL RIDERSHIP, MEANS, AND ACCESSIBILITY METRICS
+  result <- cd_transit |>
+    mutate(
+      # Total ridership per year (combining all transit modes)
+      total_ridership_2017 = subway_2017 + bus_2017 + sir_2017,
+      total_ridership_2018 = subway_2018 + bus_2018 + sir_2018,
+      total_ridership_2019 = subway_2019 + bus_2019 + sir_2019,
+      total_ridership_2021 = subway_2021 + bus_2021 + sir_2021,
+      total_ridership_2022 = subway_2022 + bus_2022 + sir_2022,
+      total_ridership_2023 = subway_2023 + bus_2023 + sir_2023,
+      
+      # Mean ridership by period
+      mean_precovid = (total_ridership_2017 + total_ridership_2018 + total_ridership_2019) / 3,
+      mean_postcovid = (total_ridership_2021 + total_ridership_2022 + total_ridership_2023) / 3,
+      
+      # Alternative naming (for compatibility)
+      avg_ridership_pre = mean_precovid,
+      avg_ridership_post = mean_postcovid,
+      
+      # Percent change in ridership (pre-COVID to post-COVID)
+      combined_percent_change = if_else(
+        mean_precovid > 0,
+        (mean_postcovid - mean_precovid) / mean_precovid * 100,
+        NA_real_
+      ),
+      
+      # Transit stop density (stops per square mile)
+      total_transit_stops = subway_stations + bus_stops,
+      transit_stop_density = total_transit_stops / area_sq_miles,
+      
+      # Ridership density (annual ridership per square mile)
+      ridership_density_precovid = mean_precovid / area_sq_miles,
+      ridership_density_postcovid = mean_postcovid / area_sq_miles,
+      
+      # Accessibility index: combines stop density and ridership density
+      # Normalized to 0-100 scale (will calculate percentile ranks)
+      accessibility_score_precovid = (transit_stop_density / max(transit_stop_density, na.rm = TRUE) * 50) +
+                                     (ridership_density_precovid / max(ridership_density_precovid, na.rm = TRUE) * 50),
+      accessibility_score_postcovid = (transit_stop_density / max(transit_stop_density, na.rm = TRUE) * 50) +
+                                      (ridership_density_postcovid / max(ridership_density_postcovid, na.rm = TRUE) * 50)
+    )
+  
+  # Base columns to select
+  base_cols <- c(
+    "community_district" = "cd_id",
+    "area_sq_miles",
+    "total_transit_stops",
+    "transit_stop_density",
+    "total_ridership_2017",
+    "total_ridership_2018",
+    "total_ridership_2019",
+    "mean_precovid",
+    "avg_ridership_pre",
+    "ridership_density_precovid",
+    "accessibility_score_precovid",
+    "total_ridership_2021",
+    "total_ridership_2022",
+    "total_ridership_2023",
+    "mean_postcovid",
+    "avg_ridership_post",
+    "ridership_density_postcovid",
+    "accessibility_score_postcovid",
+    "combined_percent_change"
+  )
+  
+  # Add sales columns if they exist
+  if ("median_sale_price_precovid" %in% names(result)) {
+    result <- result |>
+      select(!!!base_cols,
+             median_sale_price_precovid,
+             sales_pre_covid,
+             median_sale_price_postcovid,
+             sales_post_covid)
+  } else {
+    result <- result |>
+      select(!!!base_cols)
+  }
+  
+  return(result)
+}
+
+
+format_titles <- function(df){
+    colnames(df) <- str_replace_all(colnames(df), "_", " ") |> str_to_title()
+    df
+}
+```
+### MTA Ridership and Housing Prices by Community Districts
+```{r, echo=TRUE, message=FALSE, warning=FALSE}
+#| code-fold: true
+#| code-summary: "Display Data Table"
+
+cd_ridership_sales_price <- join_cd_transit_ridership(
+  nyc_cd,
+  precovid_subway_ridership,
+  postcovid_subway_ridership,
+  stations,
+  precovid_bus_ridership,
+  postcovid_bus_ridership,
+  bus_stops,
+  bus_stop_shelters,
+  sir_precovid,
+  sir_postcovid,
+  cd_sales_panel = cd_sales  # Optional: include housing data
+) |>
+  format_titles() 
+
+cd_ridership_sales_price |>
+  datatable(options = list(searching = FALSE, info = FALSE))
+
+cd_ridership_sales_price_sf <- cd_ridership_sales_price |>
+  left_join(
+    nyc_cd |> select(cd_id, geometry),   # only keep geometry from nyc_cd
+    by = c("Community District" = "cd_id")  
+  ) |>
+  st_as_sf()
+```
+### EXPLANATIONS OF VARIABLES & CALCULATED METRICS
+To avoid repetition, the convention of unique column names is explained below. Although in the above table, the calculated statistics are differentiated by pre-COVID and post-COVID.
+
+* **Community District (CDs)**
+  * The naming conventions follow an abbreviation of the borough along with a district number. For example, the first observation, QN10, reads Queens District 10. Visit [NYC Planning](https://www.nyc.gov/content/planning/pages/resources/datasets/community-districts) for more information. 
+
+* **Area (Sq Miles)**
+  * The Community District shapefile included the geographical boundaries useful for mapping with the area of the region, which was later converted to square miles for easier interpretation. 
+
+* **Total Transit Stops**
+  * Sums the total count of subway, bus, and SIR stations (if applicable) within a CD. 
+
+* **Transit Stop Density** 
+  * Calculated by dividing the total transit stops by area (sq miles) to measure spatial accessibility. The results are interpreted as the number of stations per square mile within the specified CD. 
+
+* **Total Ridership 2018-2019/2021-2023** 
+  * Sums the total annual ridership of subways, buses, and SIR ridership (if applicable) within CD for each respective year.
+
+
+* **Mean Pre-COVID/Post-COVID**
+  * Calculates the mean ridership pre-COVID by taking into account the total ridership from 2017 to 2019. 
+
+
+* **Ridership Density Pre-COVID/Post-COVID** 
+  * Measures the volume of transit usage per square mile, reflecting on ridership demand and transit usage. 
+
+* **Accessibility Score Pre-COVID/Post-COVID** 
+  * By taking into account transit stop density and ridership density, an accessibility score metric was calculated to assess its performance on ridership demands being met. A high accessibility score is ideal, indicating there is an abundance of transit stops with high ridership. Moderate scores reflect the intermediate values that could range from a combination of high ridership with low accessibility to low ridership with high accessibility. Merely observing the accessibility score will be harder to distinguish between the two, which is why the two measures were kept for display in the data table. Lastly, a low accessibility score showcases limited transit accessibility and low reliance, suggesting a greater dependence on private transportation. 
+
+* **Combined Percent Change**
+  * Calculates the change in mean ridership pre-COVID and post-COVID. 
+  
+* **Median Sale Price Pre-COVID/Post-COVID** 
+  * Calculates the median sale price of houses found within the specified CD.
+  
+* **Sales Pre-COVID/Post-COVID** 
+  * Number of sales made per CD. 
+  
+* **Geometry**
+  * Dimensions and shape of CDs used for mapping and visuals.
+  
+# FINDINGS & VISUALIZATIONS
+### Accessing Ridership 
+Observing the percent change in ridership between pre-COVID and post-COVID, there is a uniform trend of moderate decline in ridership seen across all community districts. With darker shades of orange emphasizing severity. Note to professor: To address the difference seen in this graph displayed in my individual report versus the final presentation, having dedicated more time to analyze the data post presentation, I acquired more accurate ridership counts in Staten Island for pre-COVID, specifically from bus ridership that initially had been overlooked due to differing naming conventions that have since been addressed. To contextualize the decline in ridership to current events, a plausible explanation is the shift towards working remotely. 
+```{r, fig.width=12, fig.height=8, dpi=300}
+#| code-fold: true
+#| code-summary: "Show code"
+
+# ==============================================================================
+# 1. SPATIAL MAPS: PERCENT CHANGE BY COMMUNITY DISTRICT
+# ==============================================================================
+plot_data <- cd_ridership_sales_price_sf %>%
+  rename_with(~str_replace_all(., " ", "_") %>% str_to_lower())
+
+# Define borough colors
+borough_colors <- c(
+  "MN" = "forestgreen",
+  "BK" = "steelblue",
+  "QN" = "purple",
+  "BX" = "red",
+  "SI" = "orange"
+)
+
+# Extract borough from community_district
+plot_data <- plot_data %>%
+  mutate(borough = str_sub(community_district, 1, 2))
+
+p1 <- ggplot(plot_data) +
+  geom_sf(aes(fill = combined_percent_change), color = "white", size = 0.3) +
+  scale_fill_gradient2(
+    low = "#d73027",
+    mid = "#fee090", 
+    high = "#1a9850",
+    midpoint = -30,
+    limits = c(-70, 10),
+    na.value = "grey80",
+    name = "% Change",
+    labels = scales::percent_format(scale = 1)) +
+  labs(title = "Transit Ridership Recovery Map",
+       subtitle = "Darker red indicates larger ridership decline") +
+  theme_void(base_size = 12) +
+  theme(
+    plot.title = element_text(face = "bold", size = 16, hjust = 0.5),
+    plot.subtitle = element_text(color = "gray40", size = 11, hjust = 0.5),
+    legend.position = "right"
+  )
+
+print(p1)
+```
+
+### Pre-COVID Linear Model
+```{r, echo=TRUE, message=FALSE, warning=FALSE}
+#| code-fold: true
+#| code-summary: "Show code"
+
+# Calculate R-squared for Pre-COVID
+model_pre <- lm(median_sale_price_precovid ~ accessibility_score_precovid, 
+                data = plot_data |> st_drop_geometry())
+
+# p-value: 3.87e-07 indicating there is a statistically significant relationship between pre-COVID accessibility score and median housing sale price
+summary(model_pre)
+r2_pre <- summary(model_pre)$r.squared
+
+# Coefficients table 
+coef_tbl_pre <- tidy(model_pre, conf.int = FALSE) %>%
+  mutate(p.value = signif(p.value, 3),
+         estimate = round(estimate, 1),
+         std.error = round(std.error, 1)) %>%
+  rename(Term = term,
+         Estimate = estimate,
+         `Std. Error` = std.error,
+         `p-value` = p.value)
+
+kable(coef_tbl_pre)
+```
+
+### Post-COVID Linear Model
+```{r, echo=TRUE, message=FALSE, warning=FALSE}
+#| code-fold: true
+#| code-summary: "Show code"
+
+# Calculate R-squared for Post-COVID
+model_post <- lm(median_sale_price_postcovid ~ accessibility_score_postcovid, 
+                 data = plot_data|>st_drop_geometry())
+
+# p-value: 5.32e-07 indicating there is a statistically significant relationship between post-COVID accessibility score and median housing sale price
+summary(model_post)
+r2_post <- summary(model_post)$r.squared
+
+# Coefficients table 
+coef_tbl_post <- tidy(model_post, conf.int = FALSE) %>%
+  mutate(p.value = signif(p.value, 3),
+         estimate = round(estimate, 1),
+         std.error = round(std.error, 1)) %>%
+  rename(Term = term,
+         Estimate = estimate,
+         `Std. Error` = std.error,
+         `p-value` = p.value)
+
+kable(coef_tbl_post, caption = "Pre-COVID Linear Model")
+```
+
+```{r, fig.width=12, fig.height=8, dpi=300, warning=FALSE, message=FALSE}
+#| code-fold: true
+#| code-summary: "Show code"
+
+# ============================================================================
+# 2. ACCESSIBILITY vs HOUSING PRICES SCATTER
+# ============================================================================
+# Pre-COVID plot
+p2a <- ggplot(plot_data, aes(x = accessibility_score_precovid, 
+                              y = median_sale_price_precovid / 1000,
+                              color = borough,
+                              size = mean_precovid / 1000000)) +
+  geom_point(alpha = 0.7) +
+  geom_smooth(method = "lm", se = TRUE, color = "gray30", linetype = "dashed", linewidth = 0.8) +
+  annotate("text", x = Inf, y = Inf, 
+           label = paste0("R² = ", round(r2_pre, 3)), 
+           hjust = 1.1, vjust = 1.5, size = 5, fontface = "bold", color = "gray20") +
+  scale_color_manual(values = borough_colors,
+                     labels = c("Manhattan", "Brooklyn", "Queens", "Bronx", "Staten Island")) +
+  scale_size_continuous(range = c(3, 12), 
+                        name = "Ridership\n(Millions)") +
+  labs(title = "Pre-COVID (2017-2019)",
+       x = "Accessibility Score",
+       y = "Median Sale Price ($1000s)",
+       color = "Borough") +
+  theme_minimal(base_size = 12) +
+  theme(
+    plot.title = element_text(face = "bold", size = 14),
+    panel.grid.minor = element_blank(),
+    legend.position = "right"
+  )
+
+# Post-COVID plot
+p2b <- ggplot(plot_data, aes(x = accessibility_score_postcovid, 
+                              y = median_sale_price_postcovid / 1000,
+                              color = borough,
+                              size = mean_postcovid / 1000000)) +
+  geom_point(alpha = 0.7) +
+  geom_smooth(method = "lm", se = TRUE, color = "gray30", linetype = "dashed", linewidth = 0.8) +
+  annotate("text", x = Inf, y = Inf, 
+           label = paste0("R² = ", round(r2_post, 3)), 
+           hjust = 1.1, vjust = 1.5, size = 5, fontface = "bold", color = "gray20") +
+  scale_color_manual(values = borough_colors,
+                     labels = c("Manhattan", "Brooklyn", "Queens", "Bronx", "Staten Island")) +
+  scale_size_continuous(range = c(3, 12), 
+                        name = "Ridership\n(Millions)") +
+  labs(title = "Post-COVID (2021-2023)",
+       x = "Accessibility Score",
+       y = "Median Sale Price ($1000s)",
+       color = "Borough") +
+  theme_minimal(base_size = 12) +
+  theme(
+    plot.title = element_text(face = "bold", size = 14),
+    panel.grid.minor = element_blank(),
+    legend.position = "right",
+    subtitle = sprintf("Each point represents a community district"), 
+    plot.subtitle = element_text(size = 11, hjust = 0.5, color = "darkgray")
+  )
+
+grid.arrange(p2a, p2b, ncol = 2, 
+             top = grid::textGrob("Property Values vs Transit Accessibility (Normalized 0-100 Scale)",
+                                  gp = grid::gpar(fontsize = 16, fontface = "bold")))
+
+```
+
+```{r, fig.width=12, fig.height=8, dpi=300, warning=FALSE, message=FALSE}
+#| code-fold: true
+#| code-summary: "Show code"
+
+# ============================================================================
+# 3. RIDERSHIP vs HOUSING PRICES SCATTER (PRE & POST COVID)
+# ============================================================================
+
+# Prepare data in the format needed for the plots
+precovid_combined <- plot_data |>
+  st_drop_geometry() |>
+  filter(!is.na(median_sale_price_precovid), !is.na(mean_precovid)) %>%
+  select(
+    community_district,
+    borough,
+    avg_ridership = mean_precovid,
+    median_sale_price = median_sale_price_precovid,
+    station_count = total_transit_stops
+  )
+
+postcovid_combined <- plot_data |>
+  st_drop_geometry() |>
+  filter(!is.na(median_sale_price_postcovid), !is.na(mean_postcovid)) %>%
+  select(
+    community_district,
+    borough,
+    avg_ridership = mean_postcovid,
+    median_sale_price = median_sale_price_postcovid,
+    station_count = total_transit_stops
+  )
+
+# Calculate linear models
+model_precovid <- lm(median_sale_price ~ avg_ridership, data = precovid_combined)
+model_postcovid <- lm(median_sale_price ~ avg_ridership, data = postcovid_combined)
+
+# Calculate R-squared values
+r2_precovid <- summary(model_precovid)$r.squared
+r2_postcovid <- summary(model_postcovid)$r.squared
+
+# Pre-COVID scatter plot with R-squared
+plot_precovid <- ggplot(precovid_combined, 
+                        aes(x = avg_ridership / 1e6, y = median_sale_price / 1e6)) +
+  geom_point(aes(size = station_count), alpha = 0.6, color = "#2c7bb6") +
+  geom_smooth(method = "lm", se = TRUE, color = "#d7191c", fill = "#d7191c", alpha = 0.2) +
+  annotate(
+    "text",
+    x = max(precovid_combined$avg_ridership / 1e6, na.rm = TRUE) * 0.95,
+    y = min(precovid_combined$median_sale_price / 1e6, na.rm = TRUE) * 1.1,
+    label = paste0("R² = ", round(r2_precovid, 3)),
+    hjust = 1,
+    vjust = 0,
+    size = 4,
+    fontface = "bold",
+    color = "#d7191c"
+  ) +
+  scale_x_continuous(labels = comma) +
+  scale_y_continuous(labels = comma) +
+  labs(
+    title = "Pre-COVID (2017-2019)",
+    x = "Average Annual Ridership (Millions)",
+    y = "Median Sale Price (Millions $)",
+    size = "Stations"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(face = "bold", size = 13),
+    legend.position = "right"
+  )
+
+# Post-COVID scatter plot with R-squared
+plot_postcovid <- ggplot(postcovid_combined, 
+                         aes(x = avg_ridership / 1e6, y = median_sale_price / 1e6)) +
+  geom_point(aes(size = station_count), alpha = 0.6, color = "#2c7bb6") +
+  geom_smooth(method = "lm", se = TRUE, color = "#d7191c", fill = "#d7191c", alpha = 0.2) +
+  annotate(
+    "text",
+    x = max(postcovid_combined$avg_ridership / 1e6, na.rm = TRUE) * 0.95,
+    y = min(postcovid_combined$median_sale_price / 1e6, na.rm = TRUE) * 1.1,
+    label = paste0("R² = ", round(r2_postcovid, 3)),
+    hjust = 1,
+    vjust = 0,
+    size = 4,
+    fontface = "bold",
+    color = "#d7191c"
+  ) +
+  scale_x_continuous(labels = comma) +
+  scale_y_continuous(labels = comma) +
+  labs(
+    title = "Post-COVID (2021-2023)",
+    x = "Average Annual Ridership (Millions)",
+    y = "Median Sale Price (Millions $)",
+    size = "Stations"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(face = "bold", size = 13),
+    legend.position = "right"
+  )
+
+combined_scatter <- plot_precovid + plot_postcovid +
+  plot_annotation(
+    title = "Transit Ridership is a Poor Predictor of Property Value",
+    subtitle = sprintf("Each point represents a community district"), 
+    theme = theme(
+      plot.title = element_text(face = "bold", size = 16, hjust = 0.5),
+      plot.subtitle = element_text(size = 11, hjust = 0.5, color = "darkgray")
+    )
+  )
+print(combined_scatter)
+
+```
+  
+
