@@ -13,7 +13,7 @@ The neighborhood characteristics chosen for analysis reflect aspects of resident
 # Relation to Prior Work 
 The [New York City Comptroller's Office](https://comptroller.nyc.gov/reports/nycs-post-pandemic-rebound-resilience-meets-headwinds/) emphasizes that post-COVID recovery has been uneven across neighborhoods. While the city has shown resilience, housing shortages and affordability remain major concerns that have been further challenged by the pandemic. The contribution of our research is how the specified neighborhood characteristics interact with one another and, collectively, how well they predict property values. 
 
-# I. Tranportation Ridership and Accessibility
+# I. Transportation Ridership and Accessibility
 [Did the relationship between transit accessibility, ridership levels, and property values change from pre-COVID and post-COVID across NYC's CDs?](https://tiffany-ngli.github.io/STA9750-2025-FALL/Individual%20Report.html)
 
 NYC's ridership was assessed through the services supported by the MTA, running subways, buses, and the Staten Island Railroad (SIR) across all 5 boroughs. To answer the specific question above, we observed changes in ridership level, calculated an accessibility score metric, and compared these results pre-COVID versus post-COVID. These findings build on top of the [New York City Comptroller's Office’s](https://comptroller.nyc.gov/reports/nycs-post-pandemic-rebound-resilience-meets-headwinds/) findings, which demonstrated a 20% decline between the initial pre-pandemic period (March 2019 through February 2020) and recent days (May 2024 through April 2025). 
@@ -108,9 +108,9 @@ While the overall job-price correlation remained stable, the pattern of price gr
 # V. Residential Density
 [Did high residential density become a penalty for property values post-COVID across NYC's CDs, and did this "density penalty" vary by baseline density level?](https://socoyjonathan.github.io/STA9750-2025-FALL/final_project.html)
 
-For decades, urban economics theory held that density commanded premium prices due to proximity to jobs, services, and amenities. The COVID-19 pandemic potentially challenged this through health concerns about crowding, reduced commuting value, and increased demand for personal space. Understanding whether density itself became a liability \is essential for urban planning and housing policy.
+For decades, urban economics theory held that density commanded premium prices due to proximity to jobs, services, and amenities. The COVID-19 pandemic potentially challenged this through health concerns about crowding, reduced commuting value, and increased demand for personal space. Understanding whether density itself became a liability is essential for urban planning and housing policy.
 
-Using 2015-2019 ACS density measures aggregated to Community Districts, we compared property value changes across pre-COVID (2017-2019) and post-COVID (2021-2023) periods. A key limitation: using 2019 data means we miss pandemic-induced demographic shifts.
+Using 2015-2019 ACS density measures aggregated to Community Districts, we compared property value changes across pre-COVID and post-COVID periods. A key limitation: using 2019 data means we miss pandemic-induced demographic shifts.
 
 Initial analysis revealed a density gradient: lower-density districts averaged 19.6% growth versus 15.4% in higher-density areas. However, linear regression showed weak evidence—correlation of r = -0.319 (p = 0.014), with each 10,000 unit/sq mi increase associated with just 0.79 percentage points less growth (p = 0.345), explaining only 1.6% of variation. Manhattan CD 6 (53,000 units/sq mi) saw values drop 3%, while Bronx CD 7 (27,000 units/sq mi) surged 52%.
 
