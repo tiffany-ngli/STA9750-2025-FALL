@@ -19,6 +19,10 @@ website:
         href: "./mp03.html"
       - text: "MP#04"
         href: "./mp04.html"
+      - text: "Final Project/Individual Report"
+        href: "./Individual%20Report.html"
+      - text: "Final Project/Summary Report"
+        href: "./Summary%20Report.html"
 format:
   html:
     theme: morph
