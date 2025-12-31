@@ -25,7 +25,7 @@ website:
         href: "./Summary%20Report.html"
 format:
   html:
-    theme: minty
+    theme: morph
     toc: false
 
 editor:
